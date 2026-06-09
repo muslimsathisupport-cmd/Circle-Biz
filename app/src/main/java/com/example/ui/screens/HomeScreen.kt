@@ -88,8 +88,27 @@ fun HomeScreen() {
     var selectedTask by remember { mutableStateOf<EarningTask?>(null) }
     var showNotifications by remember { mutableStateOf(false) }
     
-    // Using a simple state for unread count to simulate real-time updates
-    var unreadNotificationsCount by remember { mutableStateOf(2) }
+    var unreadNotificationsCount by remember { mutableStateOf(0) }
+    val currentUserUid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+
+    androidx.compose.runtime.DisposableEffect(currentUserUid) {
+        if (currentUserUid.isBlank()) {
+            onDispose {}
+        } else {
+            val listenerReg = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                .collection("notifications")
+                .whereEqualTo("userId", currentUserUid)
+                .whereEqualTo("isRead", false)
+                .addSnapshotListener { snapshot, error ->
+                    if (snapshot != null) {
+                        unreadNotificationsCount = snapshot.size()
+                    }
+                }
+            onDispose {
+                listenerReg.remove()
+            }
+        }
+    }
     
     val tasks = listOf(
         EarningTask("Mobile Recharge", Icons.Filled.PhoneAndroid, Color(0xFF4CAF50)),

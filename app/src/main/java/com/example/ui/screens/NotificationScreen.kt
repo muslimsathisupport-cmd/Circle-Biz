@@ -39,16 +39,61 @@ enum class NotificationType {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NotificationScreen(onBack: () -> Unit) {
-    var notifications by remember {
-        mutableStateOf(
-            listOf(
-                AppNotification("1", "Task Approved", "Your 'Gmail Sell' task has been approved. $2.00 added to your wallet.", "2 mins ago", NotificationType.SUCCESS, false),
-                AppNotification("2", "Withdrawal Successful", "Your withdrawal of $10.00 via bKash was successful.", "1 hour ago", NotificationType.SUCCESS, false),
-                AppNotification("3", "New Job Available", "A new 'Review App' task is now available. Earn $1.50!", "3 hours ago", NotificationType.INFO, true),
-                AppNotification("4", "Task Rejected", "Your 'Facebook Sell' task was rejected due to incorrect format.", "1 day ago", NotificationType.ERROR, true),
-                AppNotification("5", "Wallet Update", "Your available balance has been updated.", "2 days ago", NotificationType.INFO, true)
-            )
-        )
+    var notifications by remember { mutableStateOf<List<AppNotification>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+
+    val currentUserUid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+
+    DisposableEffect(currentUserUid) {
+        if (currentUserUid.isBlank()) {
+            isLoading = false
+            onDispose {}
+        } else {
+            val listenerReg = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                .collection("notifications")
+                .whereEqualTo("userId", currentUserUid)
+                .addSnapshotListener { snapshot, error ->
+                    if (snapshot != null) {
+                        notifications = snapshot.documents.mapNotNull { doc ->
+                            try {
+                                val id = doc.id
+                                val title = doc.getString("title") ?: ""
+                                val message = doc.getString("message") ?: ""
+                                val isRead = doc.getBoolean("isRead") ?: false
+                                val typeStr = doc.getString("type") ?: "INFO"
+                                val type = try {
+                                    NotificationType.valueOf(typeStr.uppercase())
+                                } catch (e: Exception) {
+                                    NotificationType.INFO
+                                }
+                                
+                                val ts = doc.getTimestamp("timestamp")
+                                val timeText = if (ts != null) {
+                                    val diff = System.currentTimeMillis() - ts.toDate().time
+                                    val mins = diff / (60 * 1000)
+                                    if (mins < 1) "Just now"
+                                    else if (mins < 60) "$mins mins ago"
+                                    else {
+                                        val hours = mins / 60
+                                        if (hours < 24) "$hours hours ago"
+                                        else "${hours / 24} days ago"
+                                    }
+                                } else {
+                                    doc.getString("time") ?: "Just now"
+                                }
+
+                                AppNotification(id, title, message, timeText, type, isRead)
+                            } catch (e: Exception) {
+                                null
+                            }
+                        }.sortedWith(compareBy<AppNotification> { it.isRead }.thenByDescending { it.id })
+                    }
+                    isLoading = false
+                }
+            onDispose {
+                listenerReg.remove()
+            }
+        }
     }
 
     Dialog(
@@ -70,7 +115,12 @@ fun NotificationScreen(onBack: () -> Unit) {
                         },
                         actions = {
                             TextButton(onClick = {
-                                notifications = notifications.map { it.copy(isRead = true) }
+                                notifications.filter { !it.isRead }.forEach { unread ->
+                                    com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                                        .collection("notifications")
+                                        .document(unread.id)
+                                        .update("isRead", true)
+                                }
                             }) {
                                 Text("Mark all read")
                             }
@@ -82,7 +132,11 @@ fun NotificationScreen(onBack: () -> Unit) {
                     )
                 }
             ) { paddingValues ->
-                if (notifications.isEmpty()) {
+                if (isLoading) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
+                } else if (notifications.isEmpty()) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Icon(Icons.Filled.Notifications, contentDescription = null, modifier = Modifier.size(64.dp), tint = Color.Gray)
@@ -101,9 +155,10 @@ fun NotificationScreen(onBack: () -> Unit) {
                             NotificationItem(
                                 notification = notification,
                                 onClick = {
-                                    notifications = notifications.map {
-                                        if (it.id == notification.id) it.copy(isRead = true) else it
-                                    }
+                                    com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                                        .collection("notifications")
+                                        .document(notification.id)
+                                        .update("isRead", true)
                                 }
                             )
                         }

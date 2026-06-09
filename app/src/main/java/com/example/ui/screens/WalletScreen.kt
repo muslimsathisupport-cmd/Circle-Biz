@@ -15,6 +15,7 @@ import androidx.compose.material.icons.outlined.ArrowUpward
 import androidx.compose.material.icons.outlined.SwapHoriz
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -34,24 +35,195 @@ data class Transaction(
     val date: String,
     val status: String, // Success, Pending, Failed
     val method: String,
-    val notes: String
+    val notes: String,
+    val timestamp: Long = 0L
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WalletScreen() {
+    val coroutineScope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
+
     var showDepositDialog by remember { mutableStateOf(false) }
     var showWithdrawDialog by remember { mutableStateOf(false) }
     var selectedTransaction by remember { mutableStateOf<Transaction?>(null) }
 
-    val transactions = emptyList<Transaction>() // Remove mock data
+    var balance by remember { mutableStateOf(0.0) }
+    var earnings by remember { mutableStateOf(0.0) }
+    var withdrawn by remember { mutableStateOf(0.0) }
+    var deposited by remember { mutableStateOf(0.0) }
+    var isLoadingUser by remember { mutableStateOf(true) }
+
+    var transactions by remember { mutableStateOf<List<Transaction>>(emptyList()) }
+    var isLoadingTransactions by remember { mutableStateOf(true) }
+
+    val currentUserUid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+
+    // Listen to user stats
+    DisposableEffect(currentUserUid) {
+        if (currentUserUid.isBlank()) {
+            isLoadingUser = false
+            onDispose {}
+        } else {
+            val listenerReg = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                .collection("users")
+                .document(currentUserUid)
+                .addSnapshotListener { snapshot, error ->
+                    if (snapshot != null && snapshot.exists()) {
+                        balance = when (val value = snapshot.get("balance")) {
+                            is Number -> value.toDouble()
+                            is String -> value.toDoubleOrNull() ?: 0.0
+                            else -> 0.0
+                        }
+                        earnings = when (val value = snapshot.get("earnings")) {
+                            is Number -> value.toDouble()
+                            is String -> value.toDoubleOrNull() ?: 0.0
+                            else -> 0.0
+                        }
+                        withdrawn = when (val value = snapshot.get("withdrawn")) {
+                            is Number -> value.toDouble()
+                            is String -> value.toDoubleOrNull() ?: 0.0
+                            else -> 0.0
+                        }
+                        deposited = when (val value = snapshot.get("deposited")) {
+                            is Number -> value.toDouble()
+                            is String -> value.toDoubleOrNull() ?: 0.0
+                            else -> 0.0
+                        }
+                    }
+                    isLoadingUser = false
+                }
+            onDispose {
+                listenerReg.remove()
+            }
+        }
+    }
+
+    // Listen to withdrawals and deposits combined
+    DisposableEffect(currentUserUid) {
+        if (currentUserUid.isBlank()) {
+            isLoadingTransactions = false
+            onDispose {}
+        } else {
+            val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+            var wList = emptyList<Transaction>()
+            var dList = emptyList<Transaction>()
+
+            fun updateMergedList() {
+                transactions = (wList + dList).sortedByDescending { it.timestamp }
+            }
+
+            val wListener = db.collection("withdrawals")
+                .whereEqualTo("userId", currentUserUid)
+                .addSnapshotListener { snapshot, _ ->
+                    if (snapshot != null) {
+                        wList = snapshot.documents.mapNotNull { doc ->
+                            try {
+                                val amount = when (val value = doc.get("amount")) {
+                                    is Number -> value.toDouble()
+                                    is String -> value.toDoubleOrNull() ?: 0.0
+                                    else -> 0.0
+                                }
+                                val status = doc.getString("status") ?: "Pending"
+                                val method = doc.getString("method") ?: ""
+                                val accountNo = doc.getString("accountNo") ?: ""
+                                val ts = doc.getTimestamp("timestamp")
+                                val dateStr = if (ts != null) {
+                                    val sdf = java.text.SimpleDateFormat("dd MMM yyyy, hh:mm a", java.util.Locale.getDefault())
+                                    sdf.format(ts.toDate())
+                                } else {
+                                    "Just now"
+                                }
+                                val timeMs = ts?.toDate()?.time ?: 0L
+                                Transaction(
+                                    id = doc.id,
+                                    type = "Withdraw",
+                                    amount = amount,
+                                    date = dateStr,
+                                    status = status,
+                                    method = method,
+                                    notes = "To Account: $accountNo",
+                                    timestamp = timeMs
+                                )
+                            } catch (e: Exception) {
+                                null
+                            }
+                        }
+                        updateMergedList()
+                    }
+                    isLoadingTransactions = false
+                }
+
+            val dListener = db.collection("deposits")
+                .whereEqualTo("userId", currentUserUid)
+                .addSnapshotListener { snapshot, _ ->
+                    if (snapshot != null) {
+                        dList = snapshot.documents.mapNotNull { doc ->
+                            try {
+                                val amount = when (val value = doc.get("amount")) {
+                                    is Number -> value.toDouble()
+                                    is String -> value.toDoubleOrNull() ?: 0.0
+                                    else -> 0.0
+                                }
+                                val status = doc.getString("status") ?: "Pending"
+                                val method = doc.getString("method") ?: ""
+                                val txId = doc.getString("transactionId") ?: ""
+                                val ts = doc.getTimestamp("timestamp")
+                                val dateStr = if (ts != null) {
+                                    val sdf = java.text.SimpleDateFormat("dd MMM yyyy, hh:mm a", java.util.Locale.getDefault())
+                                    sdf.format(ts.toDate())
+                                } else {
+                                    "Just now"
+                                }
+                                val timeMs = ts?.toDate()?.time ?: 0L
+                                Transaction(
+                                    id = doc.id,
+                                    type = "Deposit",
+                                    amount = amount,
+                                    date = dateStr,
+                                    status = status,
+                                    method = method,
+                                    notes = "TxID: $txId",
+                                    timestamp = timeMs
+                                )
+                            } catch (e: Exception) {
+                                null
+                            }
+                        }
+                        updateMergedList()
+                    }
+                    isLoadingTransactions = false
+                }
+
+            onDispose {
+                wListener.remove()
+                dListener.remove()
+            }
+        }
+    }
 
     if (showDepositDialog) {
-        DepositDialog(onDismiss = { showDepositDialog = false })
+        DepositDialog(
+            onDismiss = { showDepositDialog = false },
+            onSubmitted = { amount, method ->
+                coroutineScope.launch {
+                    snackbarHostState.showSnackbar("Deposit request of ৳$amount via $method submitted successfully.")
+                }
+            }
+        )
     }
     
     if (showWithdrawDialog) {
-        WithdrawDialog(availableBalance = 350.50, onDismiss = { showWithdrawDialog = false })
+        WithdrawDialog(
+            availableBalance = balance,
+            onDismiss = { showWithdrawDialog = false },
+            onSubmitted = { amount, method ->
+                coroutineScope.launch {
+                    snackbarHostState.showSnackbar("Withdrawal request of ৳$amount via $method submitted! Waiting for admin approval.")
+                }
+            }
+        )
     }
 
     if (selectedTransaction != null) {
@@ -59,6 +231,7 @@ fun WalletScreen() {
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("My Wallet", fontWeight = FontWeight.Bold) },
@@ -78,7 +251,13 @@ fun WalletScreen() {
         ) {
             item {
                 Spacer(modifier = Modifier.height(8.dp))
-                WalletCard()
+                if (isLoadingUser) {
+                    Box(modifier = Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
+                } else {
+                    WalletCard(balance = balance, earnings = earnings, withdrawn = withdrawn, deposited = deposited)
+                }
                 Spacer(modifier = Modifier.height(24.dp))
             }
 
@@ -86,8 +265,16 @@ fun WalletScreen() {
                 QuickActions(
                     onDeposit = { showDepositDialog = true },
                     onWithdraw = { showWithdrawDialog = true },
-                    onTransfer = { /* TODO */ },
-                    onHistory = { /* TODO */ }
+                    onTransfer = {
+                        coroutineScope.launch {
+                            snackbarHostState.showSnackbar("Transfer service is coming soon!")
+                        }
+                    },
+                    onHistory = {
+                        coroutineScope.launch {
+                            snackbarHostState.showSnackbar("History is listed below!")
+                        }
+                    }
                 )
                 Spacer(modifier = Modifier.height(24.dp))
             }
@@ -99,7 +286,7 @@ fun WalletScreen() {
                     fontWeight = FontWeight.Bold
                 )
                 Spacer(modifier = Modifier.height(12.dp))
-                EarningsOverview()
+                EarningsOverview(lifetime = earnings)
                 Spacer(modifier = Modifier.height(24.dp))
             }
 
@@ -114,16 +301,27 @@ fun WalletScreen() {
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
-                    TextButton(onClick = { /* TODO */ }) {
-                        Text("See All")
-                    }
                 }
                 Spacer(modifier = Modifier.height(8.dp))
             }
 
-            items(transactions) { transaction ->
-                TransactionItem(transaction = transaction) {
-                    selectedTransaction = transaction
+            if (isLoadingTransactions) {
+                item {
+                    Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
+                }
+            } else if (transactions.isEmpty()) {
+                item {
+                    Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                        Text("No transaction history found.", color = Color.Gray)
+                    }
+                }
+            } else {
+                items(transactions) { transaction ->
+                    TransactionItem(transaction = transaction) {
+                        selectedTransaction = transaction
+                    }
                 }
             }
         }
@@ -131,7 +329,7 @@ fun WalletScreen() {
 }
 
 @Composable
-fun WalletCard() {
+fun WalletCard(balance: Double, earnings: Double, withdrawn: Double, deposited: Double) {
     val gradientBrush = Brush.linearGradient(
         colors = listOf(Color(0xFF1E3C72), Color(0xFF2A5298))
     )
@@ -165,7 +363,7 @@ fun WalletCard() {
                             style = MaterialTheme.typography.bodyMedium
                         )
                         Text(
-                            text = "$350.50",
+                            text = "৳${String.format("%.2f", balance)}",
                             color = Color.White,
                             style = MaterialTheme.typography.displaySmall,
                             fontWeight = FontWeight.Bold
@@ -183,9 +381,9 @@ fun WalletCard() {
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    WalletStatItem("Earnings", "$850.00")
-                    WalletStatItem("Withdraw", "$500.00")
-                    WalletStatItem("Deposit", "$150.00")
+                    WalletStatItem("Earnings", "৳${String.format("%.2f", earnings)}")
+                    WalletStatItem("Withdraw", "৳${String.format("%.2f", withdrawn)}")
+                    WalletStatItem("Deposit", "৳${String.format("%.2f", deposited)}")
                 }
             }
         }
@@ -253,15 +451,15 @@ fun ActionButton(title: String, icon: ImageVector, color: Color, onClick: () -> 
 }
 
 @Composable
-fun EarningsOverview() {
+fun EarningsOverview(lifetime: Double) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            EarningCard("Today", "$12.50", Modifier.weight(1f))
-            EarningCard("Weekly", "$85.00", Modifier.weight(1f))
+            EarningCard("Today", "৳0.00", Modifier.weight(1f))
+            EarningCard("Weekly", "৳0.00", Modifier.weight(1f))
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            EarningCard("Monthly", "$320.00", Modifier.weight(1f))
-            EarningCard("Lifetime", "$1,250.00", Modifier.weight(1f))
+            EarningCard("Monthly", "৳0.00", Modifier.weight(1f))
+            EarningCard("Lifetime", "৳${String.format("%.2f", lifetime)}", Modifier.weight(1f))
         }
     }
 }
@@ -289,9 +487,9 @@ fun EarningCard(title: String, amount: String, modifier: Modifier = Modifier) {
 @Composable
 fun TransactionItem(transaction: Transaction, onClick: () -> Unit) {
     val statusColor = when (transaction.status) {
-        "Success" -> Color(0xFF4CAF50)
+        "Success", "Approved" -> Color(0xFF4CAF50)
         "Pending" -> Color(0xFFFF9800)
-        "Failed" -> Color(0xFFF44336)
+        "Failed", "Rejected" -> Color(0xFFF44336)
         else -> Color.Gray
     }
 
@@ -330,7 +528,7 @@ fun TransactionItem(transaction: Transaction, onClick: () -> Unit) {
             }
             Column(horizontalAlignment = Alignment.End) {
                 Text(
-                    text = if (transaction.type == "Withdraw") "-$${transaction.amount}" else "+$${transaction.amount}",
+                    text = if (transaction.type == "Withdraw") "-৳${String.format("%.2f", transaction.amount)}" else "+৳${String.format("%.2f", transaction.amount)}",
                     fontWeight = FontWeight.Bold,
                     color = if (transaction.type == "Withdraw") Color.Red else Color(0xFF4CAF50),
                     style = MaterialTheme.typography.titleMedium
@@ -344,11 +542,13 @@ fun TransactionItem(transaction: Transaction, onClick: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DepositDialog(onDismiss: () -> Unit) {
+fun DepositDialog(onDismiss: () -> Unit, onSubmitted: (Double, String) -> Unit) {
     var amount by remember { mutableStateOf("") }
     var transactionId by remember { mutableStateOf("") }
     var selectedMethod by remember { mutableStateOf("bKash") }
     val methods = listOf("bKash", "Nagad", "Rocket", "Bank Transfer")
+
+    var isSubmitting by remember { mutableStateOf(false) }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -356,7 +556,7 @@ fun DepositDialog(onDismiss: () -> Unit) {
                 TopAppBar(
                     title = { Text("Deposit Funds") },
                     navigationIcon = {
-                        IconButton(onClick = onDismiss) { Icon(Icons.Filled.Close, contentDescription = "Close") }
+                        IconButton(onClick = onDismiss, enabled = !isSubmitting) { Icon(Icons.Filled.Close, contentDescription = "Close") }
                     }
                 )
                 Spacer(modifier = Modifier.height(16.dp))
@@ -364,8 +564,9 @@ fun DepositDialog(onDismiss: () -> Unit) {
                 OutlinedTextField(
                     value = amount,
                     onValueChange = { amount = it },
-                    label = { Text("Amount ($)") },
+                    label = { Text("Amount (৳)") },
                     modifier = Modifier.fillMaxWidth(),
+                    enabled = !isSubmitting,
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number)
                 )
                 Spacer(modifier = Modifier.height(16.dp))
@@ -376,9 +577,10 @@ fun DepositDialog(onDismiss: () -> Unit) {
                     methods.forEach { method ->
                         FilterChip(
                             selected = selectedMethod == method,
-                            onClick = { selectedMethod = method },
+                            onClick = { if (!isSubmitting) selectedMethod = method },
                             label = { Text(method) },
-                            modifier = Modifier.padding(end = 8.dp)
+                            modifier = Modifier.padding(end = 8.dp),
+                            enabled = !isSubmitting
                         )
                     }
                 }
@@ -388,15 +590,61 @@ fun DepositDialog(onDismiss: () -> Unit) {
                     value = transactionId,
                     onValueChange = { transactionId = it },
                     label = { Text("Transaction ID") },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !isSubmitting
                 )
                 
                 Spacer(modifier = Modifier.height(32.dp))
-                Button(
-                    onClick = onDismiss,
-                    modifier = Modifier.fillMaxWidth().height(56.dp)
-                ) {
-                    Text("Submit Deposit Request", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                if (isSubmitting) {
+                    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
+                } else {
+                    Button(
+                        onClick = {
+                            val reqAmount = amount.toDoubleOrNull() ?: 0.0
+                            if (reqAmount > 0 && transactionId.isNotBlank()) {
+                                isSubmitting = true
+                                val currentUserUid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+                                val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                                val depositDoc = db.collection("deposits").document()
+                                val depositId = depositDoc.id
+                                val depositData = hashMapOf(
+                                    "id" to depositId,
+                                    "userId" to currentUserUid,
+                                    "amount" to reqAmount,
+                                    "method" to selectedMethod,
+                                    "transactionId" to transactionId,
+                                    "status" to "Pending",
+                                    "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+                                )
+                                val notificationDoc = db.collection("notifications").document()
+                                val notificationData = hashMapOf(
+                                    "id" to notificationDoc.id,
+                                    "userId" to currentUserUid,
+                                    "title" to "Deposit Submitted",
+                                    "message" to "Your deposit of ৳${String.format("%.2f", reqAmount)} via $selectedMethod is pending approval.",
+                                    "type" to "INFO",
+                                    "isRead" to false,
+                                    "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+                                )
+                                db.runBatch { batch ->
+                                    batch.set(depositDoc, depositData)
+                                    batch.set(notificationDoc, notificationData)
+                                }.addOnCompleteListener { task ->
+                                    isSubmitting = false
+                                    if (task.isSuccessful) {
+                                        onSubmitted(reqAmount, selectedMethod)
+                                        onDismiss()
+                                    }
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                        enabled = amount.isNotBlank() && transactionId.isNotBlank()
+                    ) {
+                        Text("Submit Deposit Request", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }
@@ -405,13 +653,14 @@ fun DepositDialog(onDismiss: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun WithdrawDialog(availableBalance: Double, onDismiss: () -> Unit) {
+fun WithdrawDialog(availableBalance: Double, onDismiss: () -> Unit, onSubmitted: (Double, String) -> Unit) {
     var amount by remember { mutableStateOf("") }
     var accountNo by remember { mutableStateOf("") }
     var selectedMethod by remember { mutableStateOf("bKash") }
     val methods = listOf("bKash", "Nagad", "Rocket", "Bank Transfer")
     
     var errorText by remember { mutableStateOf("") }
+    var isSubmitting by remember { mutableStateOf(false) }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -419,7 +668,7 @@ fun WithdrawDialog(availableBalance: Double, onDismiss: () -> Unit) {
                 TopAppBar(
                     title = { Text("Withdraw Funds") },
                     navigationIcon = {
-                        IconButton(onClick = onDismiss) { Icon(Icons.Filled.Close, contentDescription = "Close") }
+                        IconButton(onClick = onDismiss, enabled = !isSubmitting) { Icon(Icons.Filled.Close, contentDescription = "Close") }
                     }
                 )
                 Spacer(modifier = Modifier.height(16.dp))
@@ -434,7 +683,7 @@ fun WithdrawDialog(availableBalance: Double, onDismiss: () -> Unit) {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text("Available Balance", color = MaterialTheme.colorScheme.onPrimaryContainer)
-                        Text("$$availableBalance", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                        Text("৳${String.format("%.2f", availableBalance)}", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
                     }
                 }
                 
@@ -450,8 +699,9 @@ fun WithdrawDialog(availableBalance: Double, onDismiss: () -> Unit) {
                             errorText = ""
                         }
                     },
-                    label = { Text("Amount ($)") },
+                    label = { Text("Amount (৳)") },
                     modifier = Modifier.fillMaxWidth(),
+                    enabled = !isSubmitting,
                     isError = errorText.isNotEmpty(),
                     supportingText = { if (errorText.isNotEmpty()) Text(errorText) },
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number)
@@ -464,9 +714,10 @@ fun WithdrawDialog(availableBalance: Double, onDismiss: () -> Unit) {
                     methods.forEach { method ->
                         FilterChip(
                             selected = selectedMethod == method,
-                            onClick = { selectedMethod = method },
+                            onClick = { if (!isSubmitting) selectedMethod = method },
                             label = { Text(method) },
-                            modifier = Modifier.padding(end = 8.dp)
+                            modifier = Modifier.padding(end = 8.dp),
+                            enabled = !isSubmitting
                         )
                     }
                 }
@@ -477,16 +728,61 @@ fun WithdrawDialog(availableBalance: Double, onDismiss: () -> Unit) {
                     onValueChange = { accountNo = it },
                     label = { Text("Account Number") },
                     modifier = Modifier.fillMaxWidth(),
+                    enabled = !isSubmitting,
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Phone)
                 )
                 
                 Spacer(modifier = Modifier.height(32.dp))
-                Button(
-                    onClick = onDismiss,
-                    modifier = Modifier.fillMaxWidth().height(56.dp),
-                    enabled = amount.isNotBlank() && errorText.isEmpty() && accountNo.isNotBlank()
-                ) {
-                    Text("Confirm Withdraw", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                if (isSubmitting) {
+                    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
+                } else {
+                    Button(
+                        onClick = {
+                            val reqAmount = amount.toDoubleOrNull() ?: 0.0
+                            if (reqAmount > 0 && accountNo.isNotBlank()) {
+                                isSubmitting = true
+                                val currentUserUid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+                                val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                                val withdrawDoc = db.collection("withdrawals").document()
+                                val withdrawId = withdrawDoc.id
+                                val withdrawData = hashMapOf(
+                                    "id" to withdrawId,
+                                    "userId" to currentUserUid,
+                                    "amount" to reqAmount,
+                                    "method" to selectedMethod,
+                                    "accountNo" to accountNo,
+                                    "status" to "Pending",
+                                    "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+                                )
+                                val notificationDoc = db.collection("notifications").document()
+                                val notificationData = hashMapOf(
+                                    "id" to notificationDoc.id,
+                                    "userId" to currentUserUid,
+                                    "title" to "Withdrawal Submitted",
+                                    "message" to "Your withdrawal request of ৳${String.format("%.2f", reqAmount)} via $selectedMethod has been submitted successfully. Waiting for admin approval.",
+                                    "type" to "INFO",
+                                    "isRead" to false,
+                                    "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+                                )
+                                db.runBatch { batch ->
+                                    batch.set(withdrawDoc, withdrawData)
+                                    batch.set(notificationDoc, notificationData)
+                                }.addOnCompleteListener { task ->
+                                    isSubmitting = false
+                                    if (task.isSuccessful) {
+                                        onSubmitted(reqAmount, selectedMethod)
+                                        onDismiss()
+                                    }
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                        enabled = amount.isNotBlank() && errorText.isEmpty() && accountNo.isNotBlank()
+                    ) {
+                        Text("Confirm Withdraw", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }
@@ -497,9 +793,9 @@ fun WithdrawDialog(availableBalance: Double, onDismiss: () -> Unit) {
 @Composable
 fun TransactionDetailsDialog(transaction: Transaction, onDismiss: () -> Unit) {
     val statusColor = when (transaction.status) {
-        "Success" -> Color(0xFF4CAF50)
+        "Success", "Approved" -> Color(0xFF4CAF50)
         "Pending" -> Color(0xFFFF9800)
-        "Failed" -> Color(0xFFF44336)
+        "Failed", "Rejected" -> Color(0xFFF44336)
         else -> Color.Gray
     }
 
@@ -516,7 +812,7 @@ fun TransactionDetailsDialog(transaction: Transaction, onDismiss: () -> Unit) {
                 Divider(modifier = Modifier.padding(vertical = 12.dp))
                 DetailRow("Type", transaction.type)
                 Divider(modifier = Modifier.padding(vertical = 12.dp))
-                DetailRow("Amount", "$${transaction.amount}")
+                DetailRow("Amount", "৳${String.format("%.2f", transaction.amount)}")
                 Divider(modifier = Modifier.padding(vertical = 12.dp))
                 DetailRow("Date", transaction.date)
                 Divider(modifier = Modifier.padding(vertical = 12.dp))
