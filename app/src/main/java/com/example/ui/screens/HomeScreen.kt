@@ -242,7 +242,9 @@ fun HomeScreen() {
             com.example.ui.screens.JobPostScreen(onBack = { selectedTask = null })
         } else if (selectedTask!!.title == "Micro Job") {
             com.example.ui.screens.MicroJobScreen(onBack = { selectedTask = null })
-        } else if (selectedTask!!.title.contains("Sell") || selectedTask!!.title == "Reselling") {
+        } else if (selectedTask!!.title == "Reselling" || selectedTask!!.title == "Blood") {
+            ComingSoonBottomSheet(task = selectedTask!!, onDismiss = { selectedTask = null })
+        } else if (selectedTask!!.title.contains("Sell")) {
             com.example.ui.screens.SellTaskScreen(task = selectedTask!!, onBack = { selectedTask = null })
         } else if (selectedTask!!.title == "Typing Job") {
             com.example.ui.screens.TypingJobScreen(onBack = { selectedTask = null })
@@ -390,4 +392,78 @@ fun TaskVerificationBottomSheet(task: EarningTask, onDismiss: () -> Unit) {
         }
     }
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ComingSoonBottomSheet(task: EarningTask, onDismiss: () -> Unit) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surface
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(80.dp)
+                    .background(task.color.copy(alpha = 0.15f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = task.icon,
+                    contentDescription = null,
+                    tint = task.color,
+                    modifier = Modifier.size(40.dp)
+                )
+            }
+            Spacer(modifier = Modifier.height(24.dp))
+            Text(
+                text = task.title,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "কামিং সুন (Coming Soon)",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Black,
+                color = task.color,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                text = "এই ফিচারটি নিয়ে খুব শীঘ্রই কাজ করা হচ্ছে। নতুন আপডেট আসার সাথে সাথেই আপনি ক্যাটাগরি থেকে ইনকাম করতে পারবেন। আমাদের সাথেই থাকুন!",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                lineHeight = 20.sp
+            )
+            Spacer(modifier = Modifier.height(32.dp))
+            Button(
+                onClick = onDismiss,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                shape = RoundedCornerShape(12.dp),
+                colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = task.color)
+            ) {
+                Text(
+                    text = "ঠিক আছে",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+            }
+            Spacer(modifier = Modifier.height(24.dp))
+        }
+    }
+}
+
 

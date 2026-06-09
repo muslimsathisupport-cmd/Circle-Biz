@@ -43,12 +43,16 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.lazy.items
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -71,8 +75,55 @@ fun SellTaskScreen(task: EarningTask, onBack: () -> Unit) {
     var isTermsAccepted by remember { mutableStateOf(false) }
     var showHistory by remember { mutableStateOf(false) }
     var showRules by remember { mutableStateOf(false) }
+
+    var gmailPassword by remember { mutableStateOf("SecurePass2026!@#") }
+    var facebookPassword by remember { mutableStateOf("SecurePass2026!@#") }
+    var instagramPassword by remember { mutableStateOf("SecurePass2026!@#") }
+    var telegramPassword by remember { mutableStateOf("SecurePass2026!@#") }
+    var whatsappPassword by remember { mutableStateOf("SecurePass2026!@#") }
+    var gmailReward by remember { mutableStateOf("10.00") }
+    var facebookReward by remember { mutableStateOf("10.00") }
+    var instagramReward by remember { mutableStateOf("10.00") }
+    var telegramReward by remember { mutableStateOf("10.00") }
+    var whatsappReward by remember { mutableStateOf("10.00") }
+
+    LaunchedEffect(Unit) {
+        com.google.firebase.firestore.FirebaseFirestore.getInstance()
+            .collection("settings")
+            .document("sell_settings")
+            .addSnapshotListener { snapshot, error ->
+                if (snapshot != null && snapshot.exists()) {
+                    snapshot.getString("gmail_password")?.let { gmailPassword = it }
+                    snapshot.getString("facebook_password")?.let { facebookPassword = it }
+                    snapshot.getString("instagram_password")?.let { instagramPassword = it }
+                    snapshot.getString("telegram_password")?.let { telegramPassword = it }
+                    snapshot.getString("whatsapp_password")?.let { whatsappPassword = it }
+
+                    snapshot.get("gmail_reward")?.toString()?.let { gmailReward = it }
+                    snapshot.get("facebook_reward")?.toString()?.let { facebookReward = it }
+                    snapshot.get("instagram_reward")?.toString()?.let { instagramReward = it }
+                    snapshot.get("telegram_reward")?.toString()?.let { telegramReward = it }
+                    snapshot.get("whatsapp_reward")?.toString()?.let { whatsappReward = it }
+                }
+            }
+    }
+
+    val rewardPerSell = when {
+        task.title.contains("Gmail") -> gmailReward
+        task.title.contains("Facebook") -> facebookReward
+        task.title.contains("Instagram") -> instagramReward
+        task.title.contains("Telegram") -> telegramReward
+        else -> whatsappReward
+    }
+
+    val currentPasswordInput = when {
+        task.title.contains("Gmail") -> gmailPassword
+        task.title.contains("Facebook") -> facebookPassword
+        task.title.contains("Instagram") -> instagramPassword
+        task.title.contains("Telegram") -> telegramPassword
+        else -> whatsappPassword
+    }
     
-    val rewardPerSell = "10.00" // Configure from admin
     val dailyLimit = 5
     
     val snackbarHostState = remember { SnackbarHostState() }
@@ -83,7 +134,7 @@ fun SellTaskScreen(task: EarningTask, onBack: () -> Unit) {
     }
 
     if (showRules) {
-        RulesDialog(onDismiss = { showRules = false }, task = task)
+        RulesDialog(onDismiss = { showRules = false }, task = task, requiredPassword = currentPasswordInput)
     }
 
     Dialog(
@@ -178,7 +229,7 @@ fun SellTaskScreen(task: EarningTask, onBack: () -> Unit) {
                                 )
                                 Spacer(modifier = Modifier.height(12.dp))
                                 OutlinedTextField(
-                                    value = "SecurePass2026!@#",
+                                    value = currentPasswordInput,
                                     onValueChange = {},
                                     readOnly = true,
                                     label = { Text("Required Password (Copy to use)") },
@@ -204,7 +255,7 @@ fun SellTaskScreen(task: EarningTask, onBack: () -> Unit) {
                                 )
                                 Spacer(modifier = Modifier.height(12.dp))
                                 OutlinedTextField(
-                                    value = "SecurePass2026!@#",
+                                    value = currentPasswordInput,
                                     onValueChange = {},
                                     readOnly = true,
                                     label = { Text("Required Password (Copy to use)") },
@@ -222,7 +273,7 @@ fun SellTaskScreen(task: EarningTask, onBack: () -> Unit) {
                                 )
                                 Spacer(modifier = Modifier.height(12.dp))
                                 OutlinedTextField(
-                                    value = "SecurePass2026!@#",
+                                    value = currentPasswordInput,
                                     onValueChange = {},
                                     readOnly = true,
                                     label = { Text("Required Password (Copy to use)") },
@@ -280,30 +331,55 @@ fun SellTaskScreen(task: EarningTask, onBack: () -> Unit) {
                         Button(
                             onClick = {
                                 if (isFormValid) {
-                                    coroutineScope.launch {
-                                        try {
-                                            val data = hashMapOf(
-                                                "taskTitle" to task.title,
-                                                "accountIdentifier" to accountInput,
-                                                "profileLink" to profileLinkInput,
-                                                "username" to usernameInput,
-                                                "phoneNumber" to phoneNumberInput,
-                                                "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp()
-                                            )
-                                            com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid?.let { uid ->
-                                                data["userId"] = uid
+                                    val currentUserUid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+                                    if (currentUserUid.isNotBlank()) {
+                                        val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                                        val submissionDoc = db.collection("submissions").document()
+                                        val submissionId = submissionDoc.id
+                                        val submissionData = hashMapOf(
+                                            "id" to submissionId,
+                                            "userId" to currentUserUid,
+                                            "taskTitle" to task.title,
+                                            "accountIdentifier" to accountInput,
+                                            "profileLink" to profileLinkInput,
+                                            "username" to usernameInput,
+                                            "phoneNumber" to phoneNumberInput,
+                                            "status" to "Pending",
+                                            "reward" to (rewardPerSell.toDoubleOrNull() ?: 10.0),
+                                            "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+                                        )
+                                        
+                                        val notificationDoc = db.collection("notifications").document()
+                                        val notificationId = notificationDoc.id
+                                        val notificationData = hashMapOf(
+                                            "id" to notificationId,
+                                            "userId" to currentUserUid,
+                                            "title" to "${task.title} Submitted",
+                                            "message" to "আপনার ${task.title} রিকোয়েস্ট সফলভাবে সাবমিট হয়েছে। অনুগ্রহ করে এডমিন অ্যাপ্রভালের জন্য অপেক্ষা করুন।",
+                                            "type" to "INFO",
+                                            "isRead" to false,
+                                            "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+                                        )
+
+                                        db.runBatch { batch ->
+                                            batch.set(submissionDoc, submissionData)
+                                            batch.set(notificationDoc, notificationData)
+                                        }.addOnCompleteListener { taskResult ->
+                                            if (taskResult.isSuccessful) {
+                                                accountInput = ""
+                                                passwordInput = ""
+                                                profileLinkInput = ""
+                                                usernameInput = ""
+                                                phoneNumberInput = ""
+                                                isTermsAccepted = false
+                                                coroutineScope.launch {
+                                                    snackbarHostState.showSnackbar("আপনার রিকোয়েস্ট সফলভাবে সাবমিট হয়েছে।")
+                                                }
+                                            } else {
+                                                coroutineScope.launch {
+                                                    snackbarHostState.showSnackbar("Failed to submit. Please try again.")
+                                                }
                                             }
-                                            com.google.firebase.firestore.FirebaseFirestore.getInstance().collection("submissions").add(data)
-                                            // Reset fields
-                                            accountInput = ""
-                                            passwordInput = ""
-                                            profileLinkInput = ""
-                                            usernameInput = ""
-                                            phoneNumberInput = ""
-                                            isTermsAccepted = false
-                                            snackbarHostState.showSnackbar("Submission sent for review. Check history for updates.")
-                                        } catch (e: Exception) {
-                                            snackbarHostState.showSnackbar("Failed to submit. ${e.message}")
                                         }
                                     }
                                 } else {
@@ -343,9 +419,77 @@ fun TermsItem(text: String, tint: Color = Color(0xFFE53935)) {
     }
 }
 
+data class SubmissionHistoryItem(
+    val id: String,
+    val account: String,
+    val status: String,
+    val reward: String,
+    val timestamp: Long
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SubmissionHistoryDialog(onDismiss: () -> Unit, taskName: String) {
+    val currentUserUid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+    var submissionHistory by remember { mutableStateOf<List<SubmissionHistoryItem>>(emptyList()) }
+    var isLoadingHistory by remember { mutableStateOf(true) }
+
+    DisposableEffect(currentUserUid) {
+        if (currentUserUid.isBlank()) {
+            isLoadingHistory = false
+            onDispose {}
+        } else {
+            val listenerReg = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                .collection("submissions")
+                .whereEqualTo("userId", currentUserUid)
+                .whereEqualTo("taskTitle", taskName)
+                .addSnapshotListener { snapshot, error ->
+                    if (snapshot != null) {
+                        submissionHistory = snapshot.documents.mapNotNull { doc ->
+                            try {
+                                val id = doc.id
+                                val accountIdent = doc.getString("accountIdentifier") ?: ""
+                                val phone = doc.getString("phoneNumber") ?: ""
+                                val profile = doc.getString("profileLink") ?: ""
+                                
+                                val accountText = if (accountIdent.isNotBlank()) {
+                                    accountIdent
+                                } else if (phone.isNotBlank()) {
+                                    phone
+                                } else {
+                                    profile
+                                }
+
+                                val status = doc.getString("status") ?: "Pending"
+                                val rewardVal = when (val r = doc.get("reward")) {
+                                    is Number -> r.toDouble()
+                                    is String -> r.toDoubleOrNull() ?: 0.0
+                                    else -> 0.0
+                                }
+                                val rewardText = "৳${String.format("%.2f", rewardVal)}"
+                                val ts = doc.getTimestamp("timestamp")
+                                val timeMs = ts?.toDate()?.time ?: 0L
+
+                                SubmissionHistoryItem(
+                                    id = id,
+                                    account = accountText,
+                                    status = status,
+                                    reward = rewardText,
+                                    timestamp = timeMs
+                                )
+                            } catch (e: Exception) {
+                                null
+                            }
+                        }.sortedByDescending { it.timestamp }
+                    }
+                    isLoadingHistory = false
+                }
+            onDispose {
+                listenerReg.remove()
+            }
+        }
+    }
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -371,8 +515,33 @@ fun SubmissionHistoryDialog(onDismiss: () -> Unit, taskName: String) {
                 }
             ) { padding ->
                 LazyColumn(modifier = Modifier.padding(padding).fillMaxSize()) {
-                    item {
-                        Text("No history yet.", modifier = Modifier.padding(16.dp), color = Color.Gray)
+                    if (isLoadingHistory) {
+                        item {
+                            Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator()
+                            }
+                        }
+                    } else if (submissionHistory.isEmpty()) {
+                        item {
+                            Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                                Text("No submission history yet.", color = Color.Gray)
+                            }
+                        }
+                    } else {
+                        items(submissionHistory) { item ->
+                            val statusColor = when (item.status) {
+                                "Approved", "Success" -> Color(0xFF4CAF50)
+                                "Pending" -> Color(0xFFFF9800)
+                                "Rejected", "Failed" -> Color(0xFFF44336)
+                                else -> Color.Gray
+                            }
+                            HistoryItem(
+                                account = item.account,
+                                status = item.status,
+                                statusColor = statusColor,
+                                reward = if (item.status == "Approved" || item.status == "Success") item.reward else "Pending"
+                            )
+                        }
                     }
                 }
             }
@@ -400,7 +569,7 @@ fun HistoryItem(account: String, status: String, statusColor: Color, reward: Str
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RulesDialog(onDismiss: () -> Unit, task: EarningTask) {
+fun RulesDialog(onDismiss: () -> Unit, task: EarningTask, requiredPassword: String) {
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -463,7 +632,7 @@ fun RulesDialog(onDismiss: () -> Unit, task: EarningTask) {
                                 ) {
                                     SelectionContainer {
                                         Text(
-                                            text = "SecurePass2026!@#",
+                                            text = requiredPassword,
                                             style = MaterialTheme.typography.titleLarge,
                                             fontWeight = FontWeight.Bold,
                                             color = task.color

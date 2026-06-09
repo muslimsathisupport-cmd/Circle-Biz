@@ -9,7 +9,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.PlayCircleOutline
+import androidx.compose.material.icons.filled.HourglassEmpty
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,6 +19,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.AdMobManager
@@ -33,21 +34,83 @@ fun AdViewScreen(task: EarningTask, onBack: () -> Unit) {
     
     var showHistory by remember { mutableStateOf(false) }
     var showingAdProgressDialog by remember { mutableStateOf(false) }
-    var lastWatchTime by remember { mutableStateOf(0L) }
     var adsWatched by remember { mutableStateOf(0) }
     
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
     
-    // Mock admin settings
-    val dailyLimit = 15
-    var viewsCompleted by remember { mutableStateOf(5) }
-    val breakMinutes = 2
-    val rewardAmount = 0.05
-    val requiredAdsForReward = 3
-    
+    // Dynamic settings from Firestore
+    var requiredAdsLimit by remember { mutableStateOf(3) }
+    var rewardAmount by remember { mutableStateOf(0.15) }
+    var breakDuration by remember { mutableStateOf(10) }
+    var lastAdWatchTime by remember { mutableStateOf(0L) }
+    var isLoadingSettings by remember { mutableStateOf(true) }
+    var isSubmittingTransaction by remember { mutableStateOf(false) }
+
+    val currentUserUid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+
+    // Listen to Firebase settings & User record
+    LaunchedEffect(currentUserUid) {
+        if (currentUserUid.isNotBlank()) {
+            val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+            
+            // Listen to User's last watch time
+            db.collection("users").document(currentUserUid)
+                .addSnapshotListener { snapshot, error ->
+                    if (snapshot != null && snapshot.exists()) {
+                        lastAdWatchTime = when (val value = snapshot.get("lastAdWatchTime")) {
+                            is Number -> value.toLong()
+                            is String -> value.toLongOrNull() ?: 0L
+                            else -> 0L
+                        }
+                    }
+                }
+
+            // Listen to Ad View settings
+            db.collection("settings").document("ad_settings")
+                .addSnapshotListener { snapshot, error ->
+                    if (snapshot != null && snapshot.exists()) {
+                        requiredAdsLimit = when (val value = snapshot.get("required_ads")) {
+                            is Number -> value.toInt()
+                            is String -> value.toIntOrNull() ?: 3
+                            else -> 3
+                        }
+                        rewardAmount = when (val value = snapshot.get("reward_amount")) {
+                            is Number -> value.toDouble()
+                            is String -> value.toDoubleOrNull() ?: 0.15
+                            else -> 0.15
+                        }
+                        breakDuration = when (val value = snapshot.get("break_duration")) {
+                            is Number -> value.toInt()
+                            is String -> value.toIntOrNull() ?: 10
+                            else -> 10
+                        }
+                    }
+                    isLoadingSettings = false
+                }
+        } else {
+            isLoadingSettings = false
+        }
+    }
+
     LaunchedEffect(Unit) {
         AdMobManager.loadRewardedAd(context)
+    }
+
+    // Live countdown calculations in seconds
+    var remainingSeconds by remember { mutableStateOf(0L) }
+    LaunchedEffect(lastAdWatchTime, breakDuration) {
+        while (true) {
+            val totalBreakMs = breakDuration.toLong() * 60L * 1000L
+            val elapsedMs = System.currentTimeMillis() - lastAdWatchTime
+            val diffMs = totalBreakMs - elapsedMs
+            if (diffMs > 0) {
+                remainingSeconds = diffMs / 1000
+            } else {
+                remainingSeconds = 0
+            }
+            delay(1000)
+        }
     }
 
     if (showHistory) {
@@ -61,13 +124,53 @@ fun AdViewScreen(task: EarningTask, onBack: () -> Unit) {
                 activity = activity,
                 onRewardEarned = {
                     adsWatched++
-                    if (adsWatched >= requiredAdsForReward) {
+                    if (adsWatched >= requiredAdsLimit) {
                         showingAdProgressDialog = false
-                        adsWatched = 0
-                        viewsCompleted++
-                        lastWatchTime = System.currentTimeMillis()
-                        coroutineScope.launch {
-                            snackbarHostState.showSnackbar("Ads completed! $$rewardAmount added to wallet.")
+                        isSubmittingTransaction = true
+                        
+                        // User completed the set of ads; credit the reward dynamically on Firestore
+                        val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                        val uDocRef = db.collection("users").document(currentUserUid)
+                        
+                        db.runTransaction { tx ->
+                            val userSnap = tx.get(uDocRef)
+                            val currentBalance = when (val v = userSnap.get("balance")) {
+                                is Number -> v.toDouble()
+                                is String -> v.toDoubleOrNull() ?: 0.0
+                                else -> 0.0
+                            }
+                            val currentEarnings = when (val v = userSnap.get("earnings")) {
+                                is Number -> v.toDouble()
+                                is String -> v.toDoubleOrNull() ?: 0.0
+                                else -> 0.0
+                            }
+                            tx.update(uDocRef, "balance", currentBalance + rewardAmount)
+                            tx.update(uDocRef, "earnings", currentEarnings + rewardAmount)
+                            tx.update(uDocRef, "lastAdWatchTime", System.currentTimeMillis())
+                            
+                            val nDoc = db.collection("notifications").document()
+                            val notifyData = hashMapOf(
+                                "id" to nDoc.id,
+                                "userId" to currentUserUid,
+                                "title" to "Ad View Reward Earned 🎁",
+                                "message" to "অভিনন্দন! আপনি ${requiredAdsLimit}টি অ্যাড সম্পূর্ণ দেখে ৳${String.format("%.2f", rewardAmount)} পুরস্কার পেয়েছেন।",
+                                "type" to "SUCCESS",
+                                "isRead" to false,
+                                "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+                            )
+                            tx.set(nDoc, notifyData)
+                        }.addOnCompleteListener { taskResult ->
+                            isSubmittingTransaction = false
+                            adsWatched = 0
+                            if (taskResult.isSuccessful) {
+                                coroutineScope.launch {
+                                    snackbarHostState.showSnackbar("অভিনন্দন! সফলভাবে ৳${String.format("%.2f", rewardAmount)} বোনাস পেয়েছেন।")
+                                }
+                            } else {
+                                coroutineScope.launch {
+                                    snackbarHostState.showSnackbar("বিজ্ঞাপন রিওয়ার্ড যোগ করতে ব্যর্থ হয়েছে!")
+                                }
+                            }
                         }
                     } else {
                         showingAdProgressDialog = true
@@ -75,7 +178,7 @@ fun AdViewScreen(task: EarningTask, onBack: () -> Unit) {
                 },
                 onAdDismissed = {
                     showingAdProgressDialog = false
-                    if (adsWatched < requiredAdsForReward) {
+                    if (adsWatched < requiredAdsLimit) {
                         adsWatched = 0
                     }
                 }
@@ -99,7 +202,7 @@ fun AdViewScreen(task: EarningTask, onBack: () -> Unit) {
                     CircularProgressIndicator(color = task.color)
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        "Ad Progress: $adsWatched / $requiredAdsForReward watched. \nLoading next ad required for reward...",
+                        "Ad Progress: $adsWatched / $requiredAdsLimit watched. \nLoading next ad required for reward...",
                         textAlign = TextAlign.Center,
                         style = MaterialTheme.typography.bodyMedium
                     )
@@ -129,58 +232,130 @@ fun AdViewScreen(task: EarningTask, onBack: () -> Unit) {
                 },
                 snackbarHost = { SnackbarHost(snackbarHostState) }
             ) { paddingValues ->
-                LazyColumn(modifier = Modifier.fillMaxSize().padding(paddingValues).padding(16.dp)) {
-                    item {
+                if (isLoadingSettings) {
+                    Box(modifier = Modifier.fillMaxSize().padding(paddingValues), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
+                } else if (remainingSeconds > 0) {
+                    // RENDERING REST COUNTDOWN FOR AD WATCH LIMIT
+                    val mins = remainingSeconds / 60
+                    val secs = remainingSeconds % 60
+                    val timeText = "${if (mins < 10) "0" else ""}$mins:${if (secs < 10) "0" else ""}$secs"
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(paddingValues)
+                            .padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(16.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+                            shape = RoundedCornerShape(24.dp)
                         ) {
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Filled.Info, contentDescription = null, tint = task.color)
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text("Ad View Guidelines", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                                }
-                                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
-                                Text("Complete ad views to earn money directly to your wallet. Make sure to wait for the complete duration.", style = MaterialTheme.typography.bodyMedium)
+                            Column(
+                                modifier = Modifier.padding(24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.HourglassEmpty,
+                                    contentDescription = "Break Time",
+                                    modifier = Modifier.size(72.dp),
+                                    tint = task.color
+                                )
                                 Spacer(modifier = Modifier.height(16.dp))
-                                
-                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Text("Reward Per Ad:", fontWeight = FontWeight.SemiBold)
-                                    Text("$$rewardAmount", color = task.color, fontWeight = FontWeight.Bold)
-                                }
+                                Text(
+                                    text = "বিজ্ঞাপন দেখার ব্রেক টাইম চলছে!",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer
+                                )
                                 Spacer(modifier = Modifier.height(8.dp))
-                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Text("Daily Limit:", fontWeight = FontWeight.SemiBold)
-                                    Text("$viewsCompleted / $dailyLimit")
-                                }
+                                Text(
+                                    text = "আপনি ${requiredAdsLimit}টি অ্যাড সফলভাবে শেষ করেছেন। দয়া করে ব্রেক টাইম শেষ হওয়া পর্যন্ত অপেক্ষা করুন এবং আবারও অ্যাড দেখুন।",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    textAlign = TextAlign.Center,
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.8f)
+                                )
+                                Spacer(modifier = Modifier.height(24.dp))
+                                Text(
+                                    text = timeText,
+                                    fontSize = 42.sp,
+                                    fontWeight = FontWeight.Black,
+                                    letterSpacing = 2.sp,
+                                    color = task.color
+                                )
                                 Spacer(modifier = Modifier.height(8.dp))
-                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Text("Break time between ads:", fontWeight = FontWeight.SemiBold)
-                                    Text("$breakMinutes Minutes")
-                                }
+                                Text(
+                                    text = "অবশিষ্ট সময়",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.Gray
+                                )
                             }
                         }
                         Spacer(modifier = Modifier.height(32.dp))
-                    }
-                    
-                    item {
                         Button(
-                            onClick = { 
-                                val elapsedMins = (System.currentTimeMillis() - lastWatchTime) / (1000 * 60)
-                                if (viewsCompleted >= dailyLimit) {
-                                    coroutineScope.launch { snackbarHostState.showSnackbar("Daily limit reached!") }
-                                } else if (lastWatchTime > 0 && elapsedMins < breakMinutes) {
-                                    coroutineScope.launch { snackbarHostState.showSnackbar("Please wait ${breakMinutes - elapsedMins} more minutes.") }
-                                } else {
-                                    handleAdReward()
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth().height(56.dp),
-                            enabled = viewsCompleted < dailyLimit
+                            onClick = onBack,
+                            modifier = Modifier.fillMaxWidth().height(56.dp)
                         ) {
-                            Text("Watch Ad & Earn", style = MaterialTheme.typography.titleMedium)
+                            Text("ফিরে যান")
+                        }
+                    }
+                } else {
+                    LazyColumn(modifier = Modifier.fillMaxSize().padding(paddingValues).padding(16.dp)) {
+                        item {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(16.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                            ) {
+                                Column(modifier = Modifier.padding(16.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Filled.Info, contentDescription = null, tint = task.color)
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("Ad View Guidelines", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                    }
+                                    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
+                                    Text("সম্পূর্ণ বিজ্ঞাপন দেখে ঘরে বসে আয় করুন। দয়া করে প্রতিটি বিজ্ঞাপন মনোযোগ দিয়ে শেষ হওয়া পর্যন্ত দেখুন।", style = MaterialTheme.typography.bodyMedium)
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text("Reward Amount:", fontWeight = FontWeight.SemiBold)
+                                        Text("৳${String.format("%.2f", rewardAmount)}", color = task.color, fontWeight = FontWeight.Bold)
+                                    }
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text("Ads to Watch:", fontWeight = FontWeight.SemiBold)
+                                        Text("$adsWatched / $requiredAdsLimit Ads")
+                                    }
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text("Break time between sessions:", fontWeight = FontWeight.SemiBold)
+                                        Text("$breakDuration Minutes")
+                                    }
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(32.dp))
+                        }
+                        
+                        item {
+                            if (isSubmittingTransaction) {
+                                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                    CircularProgressIndicator()
+                                }
+                            } else {
+                                Button(
+                                    onClick = { 
+                                        handleAdReward()
+                                    },
+                                    modifier = Modifier.fillMaxWidth().height(56.dp)
+                                ) {
+                                    Text("Watch Ad & Earn", style = MaterialTheme.typography.titleMedium)
+                                }
+                            }
                         }
                     }
                 }

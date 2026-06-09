@@ -8,6 +8,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
 import com.example.ui.screens.AuthScreen
 import com.example.ui.screens.MainScreen
 import com.example.ui.theme.MyApplicationTheme
@@ -20,10 +21,31 @@ class MainActivity : ComponentActivity() {
     enableEdgeToEdge()
     setContent {
       MyApplicationTheme {
-        var isLoggedIn by remember { mutableStateOf(false) }
+        val auth = remember { com.google.firebase.auth.FirebaseAuth.getInstance() }
+        var isLoggedIn by remember { mutableStateOf(auth.currentUser != null) }
+
+        // Dynamic Request for POST_NOTIFICATIONS Permission on App Launch (Android 13+)
+        val context = androidx.compose.ui.platform.LocalContext.current
+        val permissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+            contract = androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+        ) { isGranted ->
+            // Permission result handled gracefully
+        }
+
+        LaunchedEffect(Unit) {
+            if (android.os.Build.VERSION.SDK_INT >= 33) {
+                val hasPermission = androidx.core.content.ContextCompat.checkSelfPermission(
+                    context,
+                    "android.permission.POST_NOTIFICATIONS"
+                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                if (!hasPermission) {
+                    permissionLauncher.launch("android.permission.POST_NOTIFICATIONS")
+                }
+            }
+        }
         
         if (isLoggedIn) {
-          MainScreen()
+          MainScreen(onLogout = { isLoggedIn = false })
         } else {
           AuthScreen(onLoginSuccess = { isLoggedIn = true })
         }

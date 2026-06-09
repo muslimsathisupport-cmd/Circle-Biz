@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.HourglassEmpty
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -22,6 +23,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.AdMobManager
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -32,49 +34,75 @@ fun TypingJobScreen(onBack: () -> Unit) {
     var generatedText by remember { mutableStateOf(generateRandomString(8)) }
     var userInput by remember { mutableStateOf("") }
     var completedCount by remember { mutableStateOf(0) }
-    var adsWatched by remember { mutableStateOf(0) }
-    var showingAdProgressDialog by remember { mutableStateOf(false) }
-    var totalEarnings by remember { mutableStateOf(0.0) }
     var errorMessage by remember { mutableStateOf("") }
 
-    val rewardPer5Tasks = 2.50 // Simulated admin configured amount
-    val requiredTasksForAd = 5
-    val requiredAdsForReward = 3
+    // Dynamic settings loaded from Firestore
+    var rewardAmount by remember { mutableStateOf(2.50) }
+    var breakDuration by remember { mutableStateOf(25) }
+    var lastTypingTime by remember { mutableStateOf(0L) }
+    var isLoadingSettings by remember { mutableStateOf(true) }
+    var isSubmittingTransaction by remember { mutableStateOf(false) }
+
+    val coroutineScope = rememberCoroutineScope()
+    val currentUserUid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+
+    // Listen to typing configs and user progress
+    LaunchedEffect(currentUserUid) {
+        if (currentUserUid.isNotBlank()) {
+            val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+            
+            // Listen to User record
+            db.collection("users").document(currentUserUid)
+                .addSnapshotListener { snapshot, error ->
+                    if (snapshot != null && snapshot.exists()) {
+                        lastTypingTime = when (val value = snapshot.get("lastTypingTime")) {
+                            is Number -> value.toLong()
+                            is String -> value.toLongOrNull() ?: 0L
+                            else -> 0L
+                        }
+                    }
+                }
+
+            // Listen to Typing settings
+            db.collection("settings").document("typing_settings")
+                .addSnapshotListener { snapshot, error ->
+                    if (snapshot != null && snapshot.exists()) {
+                        rewardAmount = when (val value = snapshot.get("reward_amount")) {
+                            is Number -> value.toDouble()
+                            is String -> value.toDoubleOrNull() ?: 2.50
+                            else -> 2.50
+                        }
+                        breakDuration = when (val value = snapshot.get("break_duration")) {
+                            is Number -> value.toInt()
+                            is String -> value.toIntOrNull() ?: 25
+                            else -> 25
+                        }
+                    }
+                    isLoadingSettings = false
+                }
+        } else {
+            isLoadingSettings = false
+        }
+    }
 
     // Preload ad when screen starts
     LaunchedEffect(Unit) {
         AdMobManager.loadRewardedAd(context)
     }
 
-    fun handleAdReward() {
-        if (activity != null) {
-            showingAdProgressDialog = true
-            AdMobManager.showRewardedAd(
-                activity = activity,
-                onRewardEarned = {
-                    adsWatched++
-                    if (adsWatched >= requiredAdsForReward) {
-                        // User finished watching all required ads
-                        adsWatched = 0
-                        completedCount = 0
-                        totalEarnings += rewardPer5Tasks
-                        generatedText = generateRandomString(8)
-                        showingAdProgressDialog = false
-                    } else {
-                        // Needs to watch more ads
-                        // AdMobManager will load the next ad automatically
-                        showingAdProgressDialog = true
-                    }
-                },
-                onAdDismissed = {
-                    // Ad was closed early or failed to load
-                    showingAdProgressDialog = false
-                    if (adsWatched < requiredAdsForReward) {
-                        // Reset progress if they close before finishing all ads (or decide depending on logic)
-                        adsWatched = 0
-                    }
-                }
-            )
+    // Live countdown computation
+    var remainingSeconds by remember { mutableStateOf(0L) }
+    LaunchedEffect(lastTypingTime, breakDuration) {
+        while (true) {
+            val totalBreakMs = breakDuration.toLong() * 60L * 1000L
+            val elapsedMs = System.currentTimeMillis() - lastTypingTime
+            val diffMs = totalBreakMs - elapsedMs
+            if (diffMs > 0) {
+                remainingSeconds = diffMs / 1000
+            } else {
+                remainingSeconds = 0
+            }
+            delay(1000)
         }
     }
 
@@ -94,151 +122,235 @@ fun TypingJobScreen(onBack: () -> Unit) {
             )
         }
     ) { paddingValues ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            // Stats Header
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Column(modifier = Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("Progress", style = MaterialTheme.typography.labelMedium)
-                        Text("$completedCount / $requiredTasksForAd", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-                    }
-                }
-                
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Column(modifier = Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("Session Earned", style = MaterialTheme.typography.labelMedium)
-                        Text("৳$totalEarnings", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-                    }
-                }
+        if (isLoadingSettings) {
+            Box(modifier = Modifier.fillMaxSize().padding(paddingValues), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
             }
+        } else if (remainingSeconds > 0) {
+            // RENDERING PREMIUM BREAK ACTIVE SCREEN WITH SECONDS ACCURACY countdown
+            val mins = remainingSeconds / 60
+            val secs = remainingSeconds % 60
+            val timeText = "${if (mins < 10) "0" else ""}$mins:${if (secs < 10) "0" else ""}$secs"
 
-            Spacer(modifier = Modifier.height(32.dp))
-
-            Text("Type the exact text below", style = MaterialTheme.typography.titleMedium)
-            
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Text to copy
-            Box(
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(12.dp))
+                    .fillMaxSize()
+                    .padding(paddingValues)
                     .padding(24.dp),
-                contentAlignment = Alignment.Center
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
             ) {
-                Text(
-                    text = generatedText,
-                    fontSize = 28.sp,
-                    fontWeight = FontWeight.Black,
-                    fontFamily = FontFamily.Monospace,
-                    letterSpacing = 4.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // Try to match uppercase specifically for rigorous typing
-            OutlinedTextField(
-                value = userInput,
-                onValueChange = { 
-                    userInput = it
-                    errorMessage = "" 
-                },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("Type here...") },
-                singleLine = true,
-                isError = errorMessage.isNotEmpty(),
-                supportingText = if (errorMessage.isNotEmpty()) {
-                    { Text(errorMessage) }
-                } else null,
-                shape = RoundedCornerShape(12.dp)
-            )
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            Button(
-                onClick = {
-                    if (userInput == generatedText) {
-                        completedCount++
-                        userInput = ""
-                        if (completedCount >= requiredTasksForAd) {
-                            handleAdReward()
-                        } else {
-                            generatedText = generateRandomString(8)
-                        }
-                    } else {
-                        errorMessage = "Text does not match. Try again."
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+                    shape = RoundedCornerShape(24.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.HourglassEmpty,
+                            contentDescription = "Break Time",
+                            modifier = Modifier.size(72.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "টাইপিং জবের ব্রেক টাইম চলছে!",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "আপনি ৫টি কাজ সফলভাবে সম্পন্ন করেছেন। দয়া করে ব্রেক টাইম শেষ হওয়া পর্যন্ত অপেক্ষা করুন এবং আবারও টাইপ করুন।",
+                            style = MaterialTheme.typography.bodyMedium,
+                            textAlign = TextAlign.Center,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.8f)
+                        )
+                        Spacer(modifier = Modifier.height(24.dp))
+                        Text(
+                            text = timeText,
+                            fontSize = 42.sp,
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = 2.sp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "অবশিষ্ট সময়",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.Gray
+                        )
                     }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-            ) {
-                Text("Submit Answer", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-            }
-
-            Spacer(modifier = Modifier.weight(1f))
-            
-            // Admin Note Banner
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(imageVector = Icons.Filled.Warning, contentDescription = "Info", tint = MaterialTheme.colorScheme.onTertiaryContainer)
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        "Admin Note: Users earn ৳$rewardPer5Tasks after successfully typing $requiredTasksForAd correct items, requiring watching $requiredAdsForReward ads.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onTertiaryContainer
-                    )
+                }
+                Spacer(modifier = Modifier.height(32.dp))
+                Button(
+                    onClick = onBack,
+                    modifier = Modifier.fillMaxWidth().height(56.dp)
+                ) {
+                    Text("ফিরে যান")
                 }
             }
-        }
-    }
-
-    // Showing Ad Progress Dialog
-    if (showingAdProgressDialog) {
-        Dialog(onDismissRequest = { /* Cannot dismiss ad setup */ }) {
-            Card(
+        } else {
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                    .fillMaxSize()
+                    .padding(paddingValues)
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Column(
-                    modifier = Modifier.padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                // Stats Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Progress", style = MaterialTheme.typography.labelMedium)
+                            Text("$completedCount / 5", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                        }
+                    }
+                    
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Reward Pool", style = MaterialTheme.typography.labelMedium)
+                            Text("৳${String.format("%.2f", rewardAmount)}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(32.dp))
+
+                Text("Type the exact text below", style = MaterialTheme.typography.titleMedium)
+                
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Text to copy
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(12.dp))
+                        .padding(24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
                     Text(
-                        "Ad Progress: $adsWatched / $requiredAdsForReward watched. \nLoading next ad or processing reward...",
-                        textAlign = TextAlign.Center,
-                        style = MaterialTheme.typography.bodyMedium
+                        text = generatedText,
+                        fontSize = 28.sp,
+                        fontWeight = FontWeight.Black,
+                        fontFamily = FontFamily.Monospace,
+                        letterSpacing = 4.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Button(onClick = { handleAdReward() }) {
-                        Text("Show Next Ad")
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                OutlinedTextField(
+                    value = userInput,
+                    onValueChange = { 
+                        userInput = it
+                        errorMessage = "" 
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Type here...") },
+                    singleLine = true,
+                    isError = errorMessage.isNotEmpty(),
+                    supportingText = if (errorMessage.isNotEmpty()) {
+                        { Text(errorMessage) }
+                    } else null,
+                    shape = RoundedCornerShape(12.dp),
+                    enabled = !isSubmittingTransaction
+                )
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                if (isSubmittingTransaction) {
+                    CircularProgressIndicator()
+                } else {
+                    Button(
+                        onClick = {
+                            if (userInput == generatedText) {
+                                completedCount++
+                                userInput = ""
+                                if (completedCount >= 5) {
+                                    isSubmittingTransaction = true
+                                    val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                                    val uDocRef = db.collection("users").document(currentUserUid)
+                                    
+                                    db.runTransaction { tx ->
+                                        val userSnap = tx.get(uDocRef)
+                                        val currentBalance = when (val v = userSnap.get("balance")) {
+                                            is Number -> v.toDouble()
+                                            is String -> v.toDoubleOrNull() ?: 0.0
+                                            else -> 0.0
+                                        }
+                                        val currentEarnings = when (val v = userSnap.get("earnings")) {
+                                            is Number -> v.toDouble()
+                                            is String -> v.toDoubleOrNull() ?: 0.0
+                                            else -> 0.0
+                                        }
+                                        tx.update(uDocRef, "balance", currentBalance + rewardAmount)
+                                        tx.update(uDocRef, "earnings", currentEarnings + rewardAmount)
+                                        tx.update(uDocRef, "lastTypingTime", System.currentTimeMillis())
+                                        
+                                        val nDoc = db.collection("notifications").document()
+                                        val notifyData = hashMapOf(
+                                            "id" to nDoc.id,
+                                            "userId" to currentUserUid,
+                                            "title" to "Typing Reward Earned ⌨️",
+                                            "message" to "অভিনন্দন! আপনি ৫টি রাইটিং সফলভাবে টাইপ করে ৳${String.format("%.2f", rewardAmount)} বোনাস পেয়েছেন।",
+                                            "type" to "SUCCESS",
+                                            "isRead" to false,
+                                            "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+                                        )
+                                        tx.set(nDoc, notifyData)
+                                    }.addOnCompleteListener { taskResult ->
+                                        isSubmittingTransaction = false
+                                        completedCount = 0
+                                        generatedText = generateRandomString(8)
+                                    }
+                                } else {
+                                    generatedText = generateRandomString(8)
+                                }
+                            } else {
+                                errorMessage = "Text does not match. Try again."
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                        enabled = userInput.isNotBlank() && !isSubmittingTransaction
+                    ) {
+                        Text("Submit Answer", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                Spacer(modifier = Modifier.weight(1f))
+                
+                // Admin Note Banner
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(imageVector = Icons.Filled.Warning, contentDescription = "Info", tint = MaterialTheme.colorScheme.onTertiaryContainer)
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            "এডমিন নোট: প্রতিটি ৫টি টাইপিং টাস্ক সফলভাবে সম্পন্ন করার মাধ্যমে আপনি ৳${String.format("%.2f", rewardAmount)} বোনাস ব্যালেন্স অর্জন করবেন এবং পরবর্তী পেতে $breakDuration মিনিট অপেক্ষা করতে হবে।",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
                     }
                 }
             }
