@@ -1,0 +1,68 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // আপনার অ্যাডমিন ইমেইল চেক করার ফাংশন
+    function isAdmin() {
+      return request.auth != null && request.auth.token.email == "its.me.calloftamim@gmail.com";
+    }
+
+    // Settings কালেকশনের রুলস (সাধারণ ইউজার শুধু পড়তে পারবে, অ্যাডমিন লিখতে পারবে)
+    match /settings/{settingDoc} {
+      allow read: if request.auth != null; 
+      allow write: if isAdmin(); 
+    }
+
+    // Users কালেকশনের রুলস
+    match /users/{userId} {
+      allow read: if request.auth.uid == userId || isAdmin();
+      allow write: if request.auth.uid == userId || isAdmin();
+    }
+    
+    // Notifications কালেকশনের রুলস - ইউজার ক্রিয়েট এবং নিজেরটা পড়তে পারবে
+    match /notifications/{notificationId} {
+      allow create: if request.auth != null;
+      allow read: if request.auth != null && (resource == null || resource.data.userId == request.auth.uid || isAdmin());
+      allow write: if isAdmin();
+    }
+
+    // Withdrawals (Cashout) কালেকশনের রুলস
+    match /withdrawals/{requestId} {
+      allow create: if request.auth != null;
+      allow read: if request.auth != null && (resource == null || resource.data.userId == request.auth.uid || isAdmin());
+      allow update, delete: if isAdmin();
+    }
+
+    // Deposits কালেকশনের রুলস
+    match /deposits/{depositId} {
+      allow create: if request.auth != null;
+      allow read: if request.auth != null && (resource == null || resource.data.userId == request.auth.uid || isAdmin());
+      allow update, delete: if isAdmin();
+    }
+    
+    // Drive Offers কালেকশনের রুলস
+    match /drive_offers/{offerId} {
+       allow read: if request.auth != null;
+       allow write: if isAdmin();
+    }
+    
+    // Task Posts কালেকশনের রুলস
+    match /task_posts/{taskId} {
+      allow create: if request.auth != null;
+      allow read: if request.auth != null;
+      allow update, delete: if request.auth != null && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+    
+    // Job Posts কালেকশনের রুলস
+    match /job_posts/{jobId} {
+      allow create: if request.auth != null;
+      allow read: if request.auth != null;
+      allow update, delete: if request.auth != null && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    // ডিফল্টভাবে বাকি সবকিছু ব্লক
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

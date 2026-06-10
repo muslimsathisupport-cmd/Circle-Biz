@@ -118,9 +118,12 @@ fun LoginScreen(onNavigateToSignUp: () -> Unit, onLoginSuccess: () -> Unit) {
                     val auth = com.google.firebase.auth.FirebaseAuth.getInstance()
                     val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
                     
-                    auth.signInWithEmailAndPassword(email, password)
+                    val securePassword = if (password.length < 6) password.padEnd(6, '0') else password
+                    auth.signInWithEmailAndPassword(email, securePassword)
                         .addOnCompleteListener { task ->
                             if (task.isSuccessful) {
+                                val uid = auth.currentUser?.uid ?: ""
+                                UserSession.saveSession(context, uid)
                                 isLoading = false
                                 Toast.makeText(context, "Login successful!", Toast.LENGTH_SHORT).show()
                                 onLoginSuccess()
@@ -137,11 +140,15 @@ fun LoginScreen(onNavigateToSignUp: () -> Unit, onLoginSuccess: () -> Unit) {
                                                 // If FirebaseAuth currentUser is null, do a silent anonymous sign in
                                                 if (auth.currentUser == null) {
                                                     auth.signInAnonymously().addOnCompleteListener { anonTask ->
+                                                        val finalUid = document.id
+                                                        UserSession.saveSession(context, finalUid)
                                                         isLoading = false
                                                         Toast.makeText(context, "Login successful!", Toast.LENGTH_SHORT).show()
                                                         onLoginSuccess()
                                                     }
                                                 } else {
+                                                    val finalUid = document.id
+                                                    UserSession.saveSession(context, finalUid)
                                                     isLoading = false
                                                     Toast.makeText(context, "Login successful!", Toast.LENGTH_SHORT).show()
                                                     onLoginSuccess()
@@ -211,7 +218,7 @@ fun SignUpScreen(onNavigateToLogin: () -> Unit, onSignUpSuccess: () -> Unit) {
     val inputShape = RoundedCornerShape(8.dp)
 
     val isFormValid = firstName.isNotBlank() && lastName.isNotBlank() && mobileNumber.isNotBlank() &&
-            password.isNotBlank() && confirmPassword.isNotBlank() && referralCode.isNotBlank() &&
+            password.isNotBlank() && confirmPassword.isNotBlank() &&
             password == confirmPassword
 
     Column(
@@ -305,7 +312,7 @@ fun SignUpScreen(onNavigateToLogin: () -> Unit, onSignUpSuccess: () -> Unit) {
         OutlinedTextField(
             value = referralCode,
             onValueChange = { referralCode = it },
-            label = { Text("Referral Code *") },
+            label = { Text("Referral Code (যদি থাকে / ঐচ্ছিক)") },
             modifier = inputModifier,
             shape = inputShape,
             singleLine = true
@@ -320,65 +327,176 @@ fun SignUpScreen(onNavigateToLogin: () -> Unit, onSignUpSuccess: () -> Unit) {
                     val email = if (mobileNumber.contains("@")) mobileNumber else "$mobileNumber@user.com"
                     val auth = com.google.firebase.auth.FirebaseAuth.getInstance()
                     val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
-                    
-                    auth.createUserWithEmailAndPassword(email, password)
-                        .addOnCompleteListener { task ->
-                            if (task.isSuccessful) {
-                                val uid = task.result?.user?.uid ?: ""
-                                val userMap = hashMapOf(
-                                    "firstName" to firstName,
-                                    "lastName" to lastName,
-                                    "mobile" to mobileNumber,
-                                    "password" to password,
-                                    "referralCode" to referralCode,
-                                    "balance" to 0.0
-                                )
-                                db.collection("users").document(uid).set(userMap)
-                                    .addOnCompleteListener { dbTask ->
-                                        isLoading = false
-                                        Toast.makeText(context, "Sign up successful!", Toast.LENGTH_SHORT).show()
-                                        onSignUpSuccess()
-                                    }
-                            } else {
-                                // Fallback: try checking if already registered or register locally via anonymous/custom UID
-                                db.collection("users")
-                                    .whereEqualTo("mobile", mobileNumber)
-                                    .get()
-                                    .addOnCompleteListener { searchTask ->
-                                        if (searchTask.isSuccessful && !searchTask.result.isEmpty) {
-                                            isLoading = false
-                                            Toast.makeText(context, "Mobile number already registered!", Toast.LENGTH_LONG).show()
-                                        } else {
-                                            // Register using anonymous auth or generate a unique ID
-                                            auth.signInAnonymously().addOnCompleteListener { anonTask ->
-                                                val finalUid = if (anonTask.isSuccessful) {
-                                                    anonTask.result?.user?.uid ?: java.util.UUID.randomUUID().toString()
-                                                } else {
-                                                    java.util.UUID.randomUUID().toString()
-                                                }
-                                                val userMap = hashMapOf(
-                                                    "firstName" to firstName,
-                                                    "lastName" to lastName,
-                                                    "mobile" to mobileNumber,
-                                                    "password" to password,
-                                                    "referralCode" to referralCode,
-                                                    "balance" to 0.0
-                                                )
-                                                db.collection("users").document(finalUid).set(userMap)
-                                                    .addOnCompleteListener { saveTask ->
-                                                        isLoading = false
-                                                        if (saveTask.isSuccessful) {
-                                                            Toast.makeText(context, "Sign up successful!", Toast.LENGTH_SHORT).show()
-                                                            onSignUpSuccess()
-                                                        } else {
-                                                            Toast.makeText(context, "Sign up failed: ${saveTask.exception?.localizedMessage ?: "Unknown error"}", Toast.LENGTH_LONG).show()
+                    val enteredReferral = referralCode.trim().uppercase()
+
+                    // Function to design real registration save logic to avoid duplication
+                    fun proceedWithRegister(referrerUid: String?) {
+                        val securePassword = if (password.length < 6) password.padEnd(6, '0') else password
+                        auth.createUserWithEmailAndPassword(email, securePassword)
+                            .addOnCompleteListener { task ->
+                                if (task.isSuccessful) {
+                                    val uid = task.result?.user?.uid ?: ""
+                                    val generatedMyReferral = (1..8).map { "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".random() }.joinToString("")
+                                    val userMap = hashMapOf(
+                                        "firstName" to firstName,
+                                        "lastName" to lastName,
+                                        "mobile" to mobileNumber,
+                                        "password" to password,
+                                        "referralCode" to enteredReferral,
+                                        "myReferralCode" to generatedMyReferral,
+                                        "balance" to 0.0
+                                    )
+                                    db.collection("users").document(uid).set(userMap)
+                                        .addOnCompleteListener { dbTask ->
+                                            if (dbTask.isSuccessful) {
+                                                // If there's a referrer, apply the referral bonus dynamically
+                                                if (referrerUid != null) {
+                                                    db.collection("settings").document("refer_settings").get()
+                                                        .addOnCompleteListener { settingTask ->
+                                                            var bonusAmount = 10.0 // Default 10 Taka
+                                                            if (settingTask.isSuccessful && settingTask.result.exists()) {
+                                                                bonusAmount = when (val value = settingTask.result.get("refer_reward")) {
+                                                                    is Number -> value.toDouble()
+                                                                    is String -> value.toDoubleOrNull() ?: 10.0
+                                                                    else -> when (val fallbackVal = settingTask.result.get("reward_amount")) {
+                                                                        is Number -> fallbackVal.toDouble()
+                                                                        is String -> fallbackVal.toDoubleOrNull() ?: 10.0
+                                                                        else -> 10.0
+                                                                    }
+                                                                }
+                                                            }
+                                                            
+                                                            // Credit the referrer
+                                                            val referrerRef = db.collection("users").document(referrerUid)
+                                                            db.runTransaction { tx ->
+                                                                val refSnap = tx.get(referrerRef)
+                                                                val currentRefBalance = when (val bal = refSnap.get("balance")) {
+                                                                    is Number -> bal.toDouble()
+                                                                    is String -> bal.toDoubleOrNull() ?: 0.0
+                                                                    else -> 0.0
+                                                                }
+                                                                tx.update(referrerRef, "balance", currentRefBalance + bonusAmount)
+                                                            }.addOnCompleteListener { txTask ->
+                                                                // Write notification for the referrer
+                                                                val notifRef = db.collection("notifications").document()
+                                                                val notifMap = hashMapOf(
+                                                                    "title" to "রেফার বোনাস যোগ হয়েছে! 🎁",
+                                                                    "message" to "আপনার রেফার কোড ব্যবহার করে $firstName অ্যাকাউন্ট খোলার জন্য আপনি ৳$bonusAmount বোনাস পেয়েছেন।",
+                                                                    "timestamp" to System.currentTimeMillis(),
+                                                                    "userId" to referrerUid
+                                                                )
+                                                                notifRef.set(notifMap)
+                                                            }
                                                         }
-                                                    }
+                                                }
+                                                UserSession.saveSession(context, uid)
+                                                isLoading = false
+                                                Toast.makeText(context, "Sign up successful!", Toast.LENGTH_SHORT).show()
+                                                onSignUpSuccess()
+                                            } else {
+                                                isLoading = false
+                                                Toast.makeText(context, "Error: ${dbTask.exception?.localizedMessage}", Toast.LENGTH_LONG).show()
                                             }
                                         }
-                                    }
+                                } else {
+                                    // Fallback: try checking if already registered or register locally via anonymous/custom UID
+                                    db.collection("users")
+                                        .whereEqualTo("mobile", mobileNumber)
+                                        .get()
+                                        .addOnCompleteListener { searchTask ->
+                                            if (searchTask.isSuccessful && !searchTask.result.isEmpty) {
+                                                isLoading = false
+                                                Toast.makeText(context, "Mobile number already registered!", Toast.LENGTH_LONG).show()
+                                            } else {
+                                                // Register using anonymous auth or generate a unique ID
+                                                auth.signInAnonymously().addOnCompleteListener { anonTask ->
+                                                    val finalUid = if (anonTask.isSuccessful) {
+                                                        anonTask.result?.user?.uid ?: java.util.UUID.randomUUID().toString()
+                                                    } else {
+                                                        java.util.UUID.randomUUID().toString()
+                                                    }
+                                                    val generatedMyReferral = (1..8).map { "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".random() }.joinToString("")
+                                                    val userMap = hashMapOf(
+                                                        "firstName" to firstName,
+                                                        "lastName" to lastName,
+                                                        "mobile" to mobileNumber,
+                                                        "password" to password,
+                                                        "referralCode" to enteredReferral,
+                                                        "myReferralCode" to generatedMyReferral,
+                                                        "balance" to 0.0
+                                                    )
+                                                    db.collection("users").document(finalUid).set(userMap)
+                                                        .addOnCompleteListener { saveTask ->
+                                                            if (saveTask.isSuccessful) {
+                                                                if (referrerUid != null) {
+                                                                    db.collection("settings").document("refer_settings").get()
+                                                                        .addOnCompleteListener { settingTask ->
+                                                                            var bonusAmount = 10.0
+                                                                            if (settingTask.isSuccessful && settingTask.result.exists()) {
+                                                                                bonusAmount = when (val value = settingTask.result.get("refer_reward")) {
+                                                                                    is Number -> value.toDouble()
+                                                                                    is String -> value.toDoubleOrNull() ?: 10.0
+                                                                                    else -> when (val fallbackVal = settingTask.result.get("reward_amount")) {
+                                                                                        is Number -> fallbackVal.toDouble()
+                                                                                        is String -> fallbackVal.toDoubleOrNull() ?: 10.0
+                                                                                        else -> 10.0
+                                                                                    }
+                                                                                }
+                                                                            }
+                                                                            val referrerRef = db.collection("users").document(referrerUid)
+                                                                            db.runTransaction { tx ->
+                                                                                val refSnap = tx.get(referrerRef)
+                                                                                val currentRefBalance = when (val bal = refSnap.get("balance")) {
+                                                                                    is Number -> bal.toDouble()
+                                                                                    is String -> bal.toDoubleOrNull() ?: 0.0
+                                                                                    else -> 0.0
+                                                                                }
+                                                                                tx.update(referrerRef, "balance", currentRefBalance + bonusAmount)
+                                                                            }.addOnCompleteListener { txTask ->
+                                                                                val notifRef = db.collection("notifications").document()
+                                                                                val notifMap = hashMapOf(
+                                                                                    "title" to "রেফার বোনাস যোগ হয়েছে! 🎁",
+                                                                                    "message" to "আপনার রেফার কোড ব্যবহার করে $firstName অ্যাকাউন্ট খোলার জন্য আপনি ৳$bonusAmount বোনাস পেয়েছেন।",
+                                                                                    "timestamp" to System.currentTimeMillis(),
+                                                                                    "userId" to referrerUid
+                                                                                )
+                                                                                notifRef.set(notifMap)
+                                                                            }
+                                                                        }
+                                                                }
+                                                                UserSession.saveSession(context, finalUid)
+                                                                isLoading = false
+                                                                Toast.makeText(context, "Sign up successful!", Toast.LENGTH_SHORT).show()
+                                                                onSignUpSuccess()
+                                                            } else {
+                                                                isLoading = false
+                                                                Toast.makeText(context, "Sign up failed: ${saveTask.exception?.localizedMessage ?: "Unknown error"}", Toast.LENGTH_LONG).show()
+                                                            }
+                                                        }
+                                                }
+                                            }
+                                        }
+                                }
                             }
-                        }
+                    }
+
+                    // Validate referral code first if not empty
+                    if (enteredReferral.isNotBlank()) {
+                        db.collection("users")
+                            .whereEqualTo("myReferralCode", enteredReferral)
+                            .get()
+                            .addOnCompleteListener { referralQueryTask ->
+                                if (referralQueryTask.isSuccessful && !referralQueryTask.result.isEmpty) {
+                                    val referrerUid = referralQueryTask.result.documents[0].id
+                                    proceedWithRegister(referrerUid)
+                                } else {
+                                    isLoading = false
+                                    Toast.makeText(context, "আমন্ত্রিত রেফার কোডটি সঠিক নয়! ❌", Toast.LENGTH_LONG).show()
+                                }
+                            }
+                    } else {
+                        proceedWithRegister(null)
+                    }
                 }
             },
             modifier = Modifier.fillMaxWidth().height(48.dp),

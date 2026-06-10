@@ -224,6 +224,11 @@ fun QuizScreen(onBack: () -> Unit) {
             // Listen to Settings
             db.collection("settings").document("quiz_settings")
                 .addSnapshotListener { snapshot, error ->
+                    if (error != null) {
+                        android.util.Log.w("Firestore", "Listen failed.", error)
+                        isLoadingSettings = false
+                        return@addSnapshotListener
+                    }
                     if (snapshot != null && snapshot.exists()) {
                         rewardAmount = when (val value = snapshot.get("reward_amount")) {
                             is Number -> value.toDouble()

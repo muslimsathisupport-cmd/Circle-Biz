@@ -66,6 +66,11 @@ fun TypingJobScreen(onBack: () -> Unit) {
             // Listen to Typing settings
             db.collection("settings").document("typing_settings")
                 .addSnapshotListener { snapshot, error ->
+                    if (error != null) {
+                        android.util.Log.w("Firestore", "Listen failed.", error)
+                        isLoadingSettings = false
+                        return@addSnapshotListener
+                    }
                     if (snapshot != null && snapshot.exists()) {
                         rewardAmount = when (val value = snapshot.get("reward_amount")) {
                             is Number -> value.toDouble()

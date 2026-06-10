@@ -122,13 +122,13 @@ fun ToolItemCard(tool: AppTool, onClick: () -> Unit) {
             Box(
                 modifier = Modifier
                     .size(56.dp)
-                    .background(tool.color.copy(alpha = 0.15f), CircleShape),
+                    .background(tool.color, RoundedCornerShape(12.dp)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = tool.icon,
                     contentDescription = tool.title,
-                    tint = tool.color,
+                    tint = Color.White,
                     modifier = Modifier.size(28.dp)
                 )
             }

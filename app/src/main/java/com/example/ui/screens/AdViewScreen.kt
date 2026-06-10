@@ -69,6 +69,11 @@ fun AdViewScreen(task: EarningTask, onBack: () -> Unit) {
             // Listen to Ad View settings
             db.collection("settings").document("ad_settings")
                 .addSnapshotListener { snapshot, error ->
+                    if (error != null) {
+                        android.util.Log.w("Firestore", "Listen failed.", error)
+                        isLoadingSettings = false
+                        return@addSnapshotListener
+                    }
                     if (snapshot != null && snapshot.exists()) {
                         requiredAdsLimit = when (val value = snapshot.get("required_ads")) {
                             is Number -> value.toInt()

@@ -21,11 +21,10 @@ class MainActivity : ComponentActivity() {
     enableEdgeToEdge()
     setContent {
       MyApplicationTheme {
-        val auth = remember { com.google.firebase.auth.FirebaseAuth.getInstance() }
-        var isLoggedIn by remember { mutableStateOf(auth.currentUser != null) }
+        val context = androidx.compose.ui.platform.LocalContext.current
+        var isLoggedIn by remember { mutableStateOf(com.example.ui.screens.UserSession.isLoggedIn(context)) }
 
         // Dynamic Request for POST_NOTIFICATIONS Permission on App Launch (Android 13+)
-        val context = androidx.compose.ui.platform.LocalContext.current
         val permissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
             contract = androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
         ) { isGranted ->

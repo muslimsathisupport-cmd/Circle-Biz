@@ -2,6 +2,9 @@ package com.example.ui.screens
 
 import android.app.Activity
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,8 +23,13 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.background
 import androidx.compose.ui.graphics.Color
 import androidx.compose.material.icons.filled.Add
@@ -177,6 +185,65 @@ fun PlaceholderScreen(title: String) {
     }
 }
 
+@Composable
+fun ProfileListItem(
+    icon: ImageVector,
+    title: String,
+    iconBgColor: Color,
+    iconTint: Color = Color.White,
+    trailingText: String? = null,
+    onClick: () -> Unit
+) {
+    androidx.compose.material3.Surface(
+        onClick = onClick,
+        color = Color.Transparent,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 12.dp, horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .background(iconBgColor, RoundedCornerShape(10.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = iconTint,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(16.dp))
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f)
+            )
+            if (trailingText != null) {
+                Text(
+                    text = trailingText,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.Gray,
+                    modifier = Modifier.padding(end = 8.dp)
+                )
+            }
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = Color.Gray.copy(alpha = 0.8f),
+                modifier = Modifier.size(18.dp)
+            )
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(onLogout: () -> Unit) {
@@ -187,22 +254,26 @@ fun ProfileScreen(onLogout: () -> Unit) {
     var adsWatched by remember { mutableStateOf(0) }
     var showingAdProgressDialog by remember { mutableStateOf(false) }
     var lastCheckInTime by remember { mutableStateOf(0L) }
-    val dailyRewardAmount = 2.0 // Configure from admin in a real app
+    var dailyRewardAmount by remember { androidx.compose.runtime.mutableDoubleStateOf(2.0) }
+    var referRewardAmount by remember { androidx.compose.runtime.mutableDoubleStateOf(10.0) }
+    var myReferralCode by remember { mutableStateOf("") }
     val requiredAdsForReward = 3
     var snackbarMessage by remember { mutableStateOf<String?>(null) }
     
     // Dynamic settings & user metrics loaded from Firestore
-    val currentUserUid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+    val currentUserUid = UserSession.getUid(context)
     var firstName by remember { mutableStateOf("") }
     var lastName by remember { mutableStateOf("") }
     var mobile by remember { mutableStateOf("") }
     var balance by remember { mutableStateOf(0.0) }
     var isLoadingProfile by remember { mutableStateOf(true) }
 
-    // Listen to real Firestore User Record
+    // Listen to real Firestore User Record & Settings
     LaunchedEffect(currentUserUid) {
         if (currentUserUid.isNotBlank()) {
             val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+            
+            // 1. Listen to Profile Screen User document
             db.collection("users").document(currentUserUid)
                 .addSnapshotListener { snapshot, error ->
                     if (snapshot != null && snapshot.exists()) {
@@ -214,8 +285,52 @@ fun ProfileScreen(onLogout: () -> Unit) {
                             is String -> value.toDoubleOrNull() ?: 0.0
                             else -> 0.0
                         }
+                        
+                        // Generates backward-compatible referral code if missing
+                        val savedRef = snapshot.getString("myReferralCode") ?: ""
+                        if (savedRef.isBlank() || savedRef == "null") {
+                            val generatedCode = (1..8).map { "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".random() }.joinToString("")
+                            myReferralCode = generatedCode
+                            db.collection("users").document(currentUserUid).update("myReferralCode", generatedCode)
+                        } else {
+                            myReferralCode = savedRef
+                        }
                     }
                     isLoadingProfile = false
+                }
+
+            // 2. Listen to dynamic checkin settings
+            db.collection("settings").document("checkin_settings")
+                .addSnapshotListener { snapshot, error ->
+                    if (snapshot != null && snapshot.exists()) {
+                        val reward = when (val value = snapshot.get("checkin_reward")) {
+                            is Number -> value.toDouble()
+                            is String -> value.toDoubleOrNull() ?: 2.0
+                            else -> when (val v2 = snapshot.get("reward_amount")) {
+                                is Number -> v2.toDouble()
+                                is String -> v2.toDoubleOrNull() ?: 2.0
+                                else -> 2.0
+                            }
+                        }
+                        dailyRewardAmount = reward
+                    }
+                }
+
+            // 3. Listen to dynamic referral settings
+            db.collection("settings").document("refer_settings")
+                .addSnapshotListener { snapshot, error ->
+                    if (snapshot != null && snapshot.exists()) {
+                        val reward = when (val value = snapshot.get("refer_reward")) {
+                            is Number -> value.toDouble()
+                            is String -> value.toDoubleOrNull() ?: 10.0
+                            else -> when (val v2 = snapshot.get("reward_amount")) {
+                                is Number -> v2.toDouble()
+                                is String -> v2.toDoubleOrNull() ?: 10.0
+                                else -> 10.0
+                            }
+                        }
+                        referRewardAmount = reward
+                    }
                 }
         } else {
             isLoadingProfile = false
@@ -485,293 +600,463 @@ fun ProfileScreen(onLogout: () -> Unit) {
         }
     }
 
-    androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxSize()) {
-        androidx.compose.foundation.layout.Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .windowInsetsPadding(WindowInsets.statusBars)
-                .padding(16.dp)
-                .verticalScroll(rememberScrollState()),
-            horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
-        ) {
-            androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(24.dp))
-            Icon(
-                imageVector = Icons.Outlined.AccountCircle,
-                contentDescription = "Profile",
-                modifier = Modifier.size(100.dp),
-                tint = androidx.compose.material3.MaterialTheme.colorScheme.secondary
-            )
-            androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(16.dp))
-            
-            if (isLoadingProfile) {
-                CircularProgressIndicator(modifier = Modifier.size(24.dp))
-            } else {
-                Text(
-                    text = "${firstName} ${lastName}".trim().ifEmpty { "ব্যবহারকারী" },
-                    style = androidx.compose.material3.MaterialTheme.typography.headlineSmall,
-                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
-                )
-                Text(
-                    text = mobile.ifEmpty { "মোবাইল নম্বর পাওয়া যায়নি" },
-                    style = androidx.compose.material3.MaterialTheme.typography.bodyLarge,
-                    color = Color.Gray
-                )
-                androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "ব্যালেন্স: ৳${String.format("%.2f", balance)}",
-                    style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
-                    fontWeight = androidx.compose.ui.text.font.FontWeight.Black,
-                    color = androidx.compose.material3.MaterialTheme.colorScheme.primary
-                )
-            }
-            
-            var showSettings by remember { mutableStateOf(false) }
-            
-            if (showSettings) {
-                com.example.ui.screens.SettingsScreen(onBack = { showSettings = false })
-            }
-            
-            androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(20.dp))
-            
-            // PROFILE ACTIONS CARDS (EDIT PROFILE & SYSTEM SETTINGS)
-            androidx.compose.foundation.layout.Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceEvenly
-            ) {
-                // Edit Profile Card
-                androidx.compose.material3.Card(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(96.dp)
-                        .padding(horizontal = 4.dp),
-                    onClick = { showEditProfile = true },
-                    colors = CardDefaults.cardColors(
-                        containerColor = androidx.compose.material3.MaterialTheme.colorScheme.primaryContainer
-                    ),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    androidx.compose.foundation.layout.Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(12.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center
-                    ) {
-                        Icon(
-                            imageVector = androidx.compose.material.icons.Icons.Default.Edit,
-                            contentDescription = "Edit Profile",
-                            tint = androidx.compose.material3.MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-                        androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "এডিট প্রোফাইল",
-                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                            style = androidx.compose.material3.MaterialTheme.typography.labelLarge,
-                            color = androidx.compose.material3.MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-                    }
-                }
+    var showSettings by remember { mutableStateOf(false) }
+    var showAdminSettings by remember { mutableStateOf(false) }
+    var showDailyCheckInDialog by remember { mutableStateOf(false) }
+    var showReferEarnDialog by remember { mutableStateOf(false) }
 
-                // Settings Card
-                androidx.compose.material3.Card(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(96.dp)
-                        .padding(horizontal = 4.dp),
-                    onClick = { showSettings = true },
-                    colors = CardDefaults.cardColors(
-                        containerColor = androidx.compose.material3.MaterialTheme.colorScheme.secondaryContainer
-                    ),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    androidx.compose.foundation.layout.Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(12.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Build,
-                            contentDescription = "Settings",
-                            tint = androidx.compose.material3.MaterialTheme.colorScheme.onSecondaryContainer
-                        )
-                        androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "সেটিংস",
-                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                            style = androidx.compose.material3.MaterialTheme.typography.labelLarge,
-                            color = androidx.compose.material3.MaterialTheme.colorScheme.onSecondaryContainer
-                        )
-                    }
-                }
-            }
+    if (showSettings) {
+        com.example.ui.screens.SettingsScreen(onBack = { showSettings = false })
+    }
 
-            androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(16.dp))
-            
-            // LOGOUT AND DELETE ACCOUNT ROW
-            androidx.compose.foundation.layout.Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceEvenly
-            ) {
-                androidx.compose.material3.Button(
-                    onClick = {
-                        com.google.firebase.auth.FirebaseAuth.getInstance().signOut()
-                        onLogout()
-                    },
-                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                        containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant,
-                        contentColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
-                    ),
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(horizontal = 4.dp),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Icon(imageVector = androidx.compose.material.icons.Icons.Default.ExitToApp, contentDescription = "Logout")
-                    androidx.compose.foundation.layout.Spacer(modifier = Modifier.width(8.dp))
-                    Text("লগ আউট", fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
-                }
+    if (showAdminSettings) {
+        com.example.ui.screens.AdminSettingsScreen(onBack = { showAdminSettings = false })
+    }
 
-                androidx.compose.material3.Button(
-                    onClick = { showDeleteConfirm = true },
-                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                        containerColor = Color.Red,
-                        contentColor = Color.White
-                    ),
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(horizontal = 4.dp),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Icon(imageVector = androidx.compose.material.icons.Icons.Default.Delete, contentDescription = "Delete", tint = Color.White)
-                    androidx.compose.foundation.layout.Spacer(modifier = Modifier.width(8.dp))
-                    Text("ডিলেট একাউন্ট")
-                }
-            }
-            
-            androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(24.dp))
-            
-            // Daily Check-in Section
-            androidx.compose.material3.Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = androidx.compose.material3.CardDefaults.cardColors(
-                    containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant
-                )
+    if (showDailyCheckInDialog) {
+        Dialog(onDismissRequest = { showDailyCheckInDialog = false }) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
             ) {
-                androidx.compose.foundation.layout.Column(
-                    modifier = Modifier.padding(16.dp),
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    androidx.compose.foundation.layout.Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth()
+                    Box(
+                        modifier = Modifier
+                            .size(64.dp)
+                            .background(Color(0xFFFFF3E0), RoundedCornerShape(16.dp)),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Filled.CardGiftcard, contentDescription = "Gift", tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
-                        androidx.compose.foundation.layout.Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Daily Check-in",
-                            style = androidx.compose.material3.MaterialTheme.typography.titleLarge,
-                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
+                        Icon(
+                            imageVector = Icons.Filled.CardGiftcard,
+                            contentDescription = null,
+                            tint = Color(0xFFFB8C00),
+                            modifier = Modifier.size(36.dp)
                         )
                     }
-                    androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    Text(
+                        text = "Daily Check-in (দৈনিক পুরস্কার)",
+                        style = androidx.compose.material3.MaterialTheme.typography.titleLarge,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                        color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface
+                    )
+                    
+                    Spacer(modifier = Modifier.height(12.dp))
+                    
                     Text(
                         text = "Claim your daily reward of ৳$dailyRewardAmount by watching $requiredAdsForReward short ads.",
                         style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
-                        color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
+                        textAlign = TextAlign.Center,
+                        color = Color.Gray
                     )
-                    androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(16.dp))
+                    
+                    Spacer(modifier = Modifier.height(24.dp))
                     
                     val currentTime = System.currentTimeMillis()
-                    val msIn24Hours =  24 * 60 * 60 * 1000
+                    val msIn24Hours = 24 * 60 * 60 * 1000
                     val canCheckIn = (currentTime - lastCheckInTime) > msIn24Hours
                     
                     Button(
-                        onClick = { 
+                        onClick = {
+                            showDailyCheckInDialog = false
                             if (canCheckIn) {
                                 handleAdReward()
                             } else {
                                 snackbarMessage = "You have already checked in today! Try again later."
                             }
-                        }, 
-                        modifier = Modifier.fillMaxWidth(),
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(50.dp),
+                        shape = RoundedCornerShape(12.dp),
                         enabled = canCheckIn
                     ) {
                         Text(if (canCheckIn) "Claim Daily Reward" else "Come back tomorrow")
                     }
-                }
-            }
-            
-            androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(24.dp))
-        
-        // Referral Section
-        androidx.compose.material3.Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = androidx.compose.material3.CardDefaults.cardColors(
-                containerColor = androidx.compose.material3.MaterialTheme.colorScheme.primaryContainer
-            )
-        ) {
-            androidx.compose.foundation.layout.Column(
-                modifier = Modifier.padding(16.dp)
-            ) {
-                Text(
-                    text = "Refer & Earn",
-                    style = androidx.compose.material3.MaterialTheme.typography.titleLarge,
-                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                    color = androidx.compose.material3.MaterialTheme.colorScheme.onPrimaryContainer
-                )
-                androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = "Invite friends using your unique code. Both you and your friend earn an instant $5.00 bonus when they sign up and complete their first task!",
-                    style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
-                    color = androidx.compose.material3.MaterialTheme.colorScheme.onPrimaryContainer
-                )
-                
-                androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(16.dp))
-                
-                androidx.compose.foundation.layout.Row(
-                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    androidx.compose.material3.OutlinedTextField(
-                        value = "EARN-2026-XQZ",
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text("Your Referral Code") },
-                        modifier = Modifier.weight(1f)
-                    )
-                    androidx.compose.foundation.layout.Spacer(modifier = Modifier.width(8.dp))
-                    androidx.compose.material3.IconButton(
-                        onClick = { /* Copy to clipboard */ },
-                        modifier = Modifier.background(
-                            androidx.compose.material3.MaterialTheme.colorScheme.primary, 
-                            shape = androidx.compose.foundation.shape.CircleShape
-                        ).size(48.dp)
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    androidx.compose.material3.TextButton(
+                        onClick = { showDailyCheckInDialog = false }
                     ) {
-                        Icon(
-                            imageVector = Icons.Filled.Add, /* Should be ContentCopy, fallback to a placeholder if not imported. Will fix icon later. */
-                            contentDescription = "Copy code",
-                            tint = androidx.compose.material3.MaterialTheme.colorScheme.onPrimary
-                        )
+                        Text("বন্ধ করুন")
                     }
-                }
-                
-                androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(16.dp))
-                androidx.compose.material3.Button(
-                    onClick = { /* Share link */ }, 
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(Icons.Filled.AccountCircle, contentDescription = "Share", modifier = Modifier.size(18.dp))
-                    androidx.compose.foundation.layout.Spacer(modifier = Modifier.width(8.dp))
-                    Text("Share Referral Link")
                 }
             }
         }
-        
-        androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(24.dp))
     }
+
+    if (showReferEarnDialog) {
+        Dialog(onDismissRequest = { showReferEarnDialog = false }) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(24.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(64.dp)
+                            .align(Alignment.CenterHorizontally)
+                            .background(Color(0xFFF3E5F5), RoundedCornerShape(16.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Share,
+                            contentDescription = null,
+                            tint = Color(0xFF8E24AA),
+                            modifier = Modifier.size(32.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    Text(
+                        text = "Refer & Earn (রেফার ও আয়)",
+                        style = androidx.compose.material3.MaterialTheme.typography.titleLarge,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                        color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.align(Alignment.CenterHorizontally)
+                    )
+                    
+                    Spacer(modifier = Modifier.height(12.dp))
+                    
+                    Text(
+                        text = "আপনার আমন্ত্রিত কোডটি ব্যবহার করে আপনার কোনো বন্ধু নতুন অ্যাকাউন্ট খুললে আপনি এবং আপনার বন্ধু পেয়ে যাবেন তাত্ক্ষণিক ৳$referRewardAmount বোনাস!",
+                        style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
+                        color = Color.Gray,
+                        textAlign = TextAlign.Center
+                    )
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        androidx.compose.material3.OutlinedTextField(
+                            value = myReferralCode.ifEmpty { "লোড হচ্ছে..." },
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Your Referral Code (আপনার রেফার কোড)") },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        androidx.compose.material3.IconButton(
+                            onClick = {
+                                if (myReferralCode.isNotEmpty()) {
+                                    val clipboardManager = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                    val clip = android.content.ClipData.newPlainText("Referral Code", myReferralCode)
+                                    clipboardManager.setPrimaryClip(clip)
+                                    android.widget.Toast.makeText(context, "রেফার কোড কপি করা হয়েছে! 📋", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            modifier = Modifier
+                                .background(
+                                    androidx.compose.material3.MaterialTheme.colorScheme.primary,
+                                    shape = androidx.compose.foundation.shape.CircleShape
+                                )
+                                .size(48.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.ContentCopy,
+                                contentDescription = "Copy code",
+                                tint = androidx.compose.material3.MaterialTheme.colorScheme.onPrimary
+                            )
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    Button(
+                        onClick = {
+                            if (myReferralCode.isNotEmpty()) {
+                                val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(android.content.Intent.EXTRA_SUBJECT, "Referral Code")
+                                    putExtra(android.content.Intent.EXTRA_TEXT, "আমার রেফার কোড ব্যবহার করে এই অ্যাপ্লিকেশনে অ্যাকাউন্ট খুলুন এবং বোনাস পান! রেফার কোড: $myReferralCode")
+                                }
+                                context.startActivity(android.content.Intent.createChooser(shareIntent, "Share with"))
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(50.dp),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(Icons.Filled.Share, contentDescription = "Share", modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Share Referral Link")
+                    }
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    androidx.compose.material3.TextButton(
+                        onClick = { showReferEarnDialog = false },
+                        modifier = Modifier.align(Alignment.CenterHorizontally)
+                    ) {
+                        Text("বন্ধ করুন")
+                    }
+                }
+            }
+        }
+    }
+
+    androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxSize()) {
+        androidx.compose.foundation.layout.Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState()),
+            horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(210.dp),
+                contentAlignment = Alignment.BottomCenter
+            ) {
+                // Curved top banner matching the screenshot
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(160.dp)
+                        .align(Alignment.TopCenter)
+                        .background(
+                            color = androidx.compose.material3.MaterialTheme.colorScheme.primary,
+                            shape = RoundedCornerShape(bottomStart = 32.dp, bottomEnd = 32.dp)
+                        )
+                ) {
+                    // Left Decorator Circle
+                    Box(
+                        modifier = Modifier
+                            .size(140.dp)
+                            .offset(x = (-30).dp, y = (-20).dp)
+                            .background(Color.White.copy(alpha = 0.12f), androidx.compose.foundation.shape.CircleShape)
+                    )
+                    // Right Decorator Circle
+                    Box(
+                        modifier = Modifier
+                            .size(110.dp)
+                            .align(Alignment.TopEnd)
+                            .offset(x = 20.dp, y = (-15).dp)
+                            .background(Color.White.copy(alpha = 0.12f), androidx.compose.foundation.shape.CircleShape)
+                    )
+                }
+
+                // Center overlapping Avatar Frame
+                Box(
+                    modifier = Modifier
+                        .size(106.dp)
+                        .background(Color.White, androidx.compose.foundation.shape.CircleShape)
+                        .padding(3.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(androidx.compose.material3.MaterialTheme.colorScheme.primaryContainer, androidx.compose.foundation.shape.CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.AccountCircle,
+                            contentDescription = "Avatar",
+                            modifier = Modifier.size(76.dp),
+                            tint = androidx.compose.material3.MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+            if (isLoadingProfile) {
+                CircularProgressIndicator(modifier = Modifier.size(24.dp))
+            } else {
+                Text(
+                    text = "${firstName} ${lastName}".trim().ifEmpty { "ব্যবহারকারী" },
+                    style = androidx.compose.material3.MaterialTheme.typography.titleLarge,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.onBackground
+                )
+                Text(
+                    text = mobile.ifEmpty { "মোবাইল নম্বর পাওয়া যায়নি" },
+                    style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
+                    color = Color.Gray
+                )
+                
+                Spacer(modifier = Modifier.height(10.dp))
+                
+                // Balance capsule badge
+                androidx.compose.material3.Surface(
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Wallet,
+                            contentDescription = null,
+                            tint = androidx.compose.material3.MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "বর্তমান ব্যালেন্স: ৳${String.format("%.2f", balance)}",
+                            style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                            color = androidx.compose.material3.MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // White rounded menu container matching the screenshot layout
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                colors = CardDefaults.cardColors(containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface),
+                shape = RoundedCornerShape(24.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.3f))
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp)
+                ) {
+                    val currentTime = System.currentTimeMillis()
+                    val msIn24Hours = 24 * 60 * 60 * 1000
+                    val canCheckIn = (currentTime - lastCheckInTime) > msIn24Hours
+
+                    // 1. Edit Profile
+                    ProfileListItem(
+                        icon = Icons.Default.Edit,
+                        title = "প্রোফাইল এডিট করুন (Edit Profile)",
+                        iconBgColor = Color(0xFFE3F2FD),
+                        iconTint = Color(0xFF1E88E5),
+                        onClick = { showEditProfile = true }
+                    )
+                    
+                    androidx.compose.material3.HorizontalDivider(
+                        color = Color.LightGray.copy(alpha = 0.3f),
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+
+                    // Admin Settings Panel
+                    val userEmail = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.email ?: ""
+                    val isAdmin = userEmail.lowercase() == "its.me.calloftamim@gmail.com"
+
+                    if (isAdmin) {
+                        ProfileListItem(
+                            icon = Icons.Default.Build,
+                            title = "অ্যাডমিন কন্ট্রোল (Admin Panel)",
+                            iconBgColor = Color(0xFFE0F7FA),
+                            iconTint = Color(0xFF00ACC1),
+                            onClick = { showAdminSettings = true }
+                        )
+
+                        androidx.compose.material3.HorizontalDivider(
+                            color = Color.LightGray.copy(alpha = 0.3f),
+                            modifier = Modifier.padding(horizontal = 16.dp)
+                        )
+                    }
+
+                    // 2. Settings
+                    ProfileListItem(
+                        icon = Icons.Default.Settings,
+                        title = "সেটিংস (System Settings)",
+                        iconBgColor = Color(0xFFE8F5E9),
+                        iconTint = Color(0xFF43A047),
+                        onClick = { showSettings = true }
+                    )
+                    
+                    androidx.compose.material3.HorizontalDivider(
+                        color = Color.LightGray.copy(alpha = 0.3f),
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+                    
+                    // 3. Daily Check-in
+                    ProfileListItem(
+                        icon = Icons.Filled.CardGiftcard,
+                        title = "ডেইলি চেক-ইন (Daily Check-in)",
+                        iconBgColor = Color(0xFFFFF3E0),
+                        iconTint = Color(0xFFFB8C00),
+                        trailingText = if (canCheckIn) "৳$dailyRewardAmount" else "সম্পন্ন",
+                        onClick = { showDailyCheckInDialog = true }
+                    )
+                    
+                    androidx.compose.material3.HorizontalDivider(
+                        color = Color.LightGray.copy(alpha = 0.3f),
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+
+                    // 4. Refer & Earn
+                    ProfileListItem(
+                        icon = Icons.Filled.Share,
+                        title = "রেফার ও আয় (Refer & Earn)",
+                        iconBgColor = Color(0xFFF3E5F5),
+                        iconTint = Color(0xFF8E24AA),
+                        trailingText = "৳$referRewardAmount",
+                        onClick = { showReferEarnDialog = true }
+                    )
+                    
+                    androidx.compose.material3.HorizontalDivider(
+                        color = Color.LightGray.copy(alpha = 0.3f),
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+
+                    // 5. Logout
+                    ProfileListItem(
+                        icon = Icons.Default.ExitToApp,
+                        title = "লগ আউট (Log Out)",
+                        iconBgColor = Color(0xFFECEFF1),
+                        iconTint = Color(0xFF546E7A),
+                        onClick = {
+                            UserSession.clearSession(context)
+                            onLogout()
+                        }
+                    )
+                    
+                    androidx.compose.material3.HorizontalDivider(
+                        color = Color.LightGray.copy(alpha = 0.3f),
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+
+                    // 6. Delete Account
+                    ProfileListItem(
+                        icon = Icons.Default.Delete,
+                        title = "একাউন্ট ডিলিট করুন (Delete Account)",
+                        iconBgColor = Color(0xFFFFEBEE),
+                        iconTint = Color(0xFFE53935),
+                        onClick = { showDeleteConfirm = true }
+                    )
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(30.dp))
+        }
     }
     
     // SnackbarHost

@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -125,10 +126,16 @@ fun WalletScreen() {
                                     is String -> value.toDoubleOrNull() ?: 0.0
                                     else -> 0.0
                                 }
-                                val status = doc.getString("status") ?: "Pending"
-                                val method = doc.getString("method") ?: ""
-                                val accountNo = doc.getString("accountNo") ?: ""
-                                val ts = doc.getTimestamp("timestamp")
+                                val rawStatus = doc.getString("status") ?: "pending"
+                                val status = when (rawStatus.lowercase()) {
+                                    "pending" -> "Pending"
+                                    "approved" -> "Approved"
+                                    "rejected" -> "Rejected"
+                                    else -> rawStatus.replaceFirstChar { if (it.isLowerCase()) it.titlecase(java.util.Locale.getDefault()) else it.toString() }
+                                }
+                                val method = doc.getString("paymentMethod") ?: doc.getString("method") ?: ""
+                                val accountNo = doc.getString("accountNumber") ?: doc.getString("accountNo") ?: ""
+                                val ts = doc.getTimestamp("createdAt") ?: doc.getTimestamp("timestamp")
                                 val dateStr = if (ts != null) {
                                     val sdf = java.text.SimpleDateFormat("dd MMM yyyy, hh:mm a", java.util.Locale.getDefault())
                                     sdf.format(ts.toDate())
@@ -166,10 +173,16 @@ fun WalletScreen() {
                                     is String -> value.toDoubleOrNull() ?: 0.0
                                     else -> 0.0
                                 }
-                                val status = doc.getString("status") ?: "Pending"
-                                val method = doc.getString("method") ?: ""
+                                val rawStatus = doc.getString("status") ?: "pending"
+                                val status = when (rawStatus.lowercase()) {
+                                    "pending" -> "Pending"
+                                    "approved" -> "Approved"
+                                    "rejected" -> "Rejected"
+                                    else -> rawStatus.replaceFirstChar { if (it.isLowerCase()) it.titlecase(java.util.Locale.getDefault()) else it.toString() }
+                                }
+                                val method = doc.getString("paymentMethod") ?: doc.getString("method") ?: ""
                                 val txId = doc.getString("transactionId") ?: ""
-                                val ts = doc.getTimestamp("timestamp")
+                                val ts = doc.getTimestamp("createdAt") ?: doc.getTimestamp("timestamp")
                                 val dateStr = if (ts != null) {
                                     val sdf = java.text.SimpleDateFormat("dd MMM yyyy, hh:mm a", java.util.Locale.getDefault())
                                     sdf.format(ts.toDate())
@@ -547,12 +560,15 @@ fun DepositDialog(onDismiss: () -> Unit, onSubmitted: (Double, String) -> Unit) 
     var transactionId by remember { mutableStateOf("") }
     var selectedMethod by remember { mutableStateOf("bKash") }
     val methods = listOf("bKash", "Nagad", "Rocket", "Bank Transfer")
+    
+    val depositSuggestions = listOf("100", "200", "500", "1000", "2000", "5000")
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     var isSubmitting by remember { mutableStateOf(false) }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-            Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+            Column(modifier = Modifier.fillMaxSize().padding(16.dp).verticalScroll(androidx.compose.foundation.rememberScrollState())) {
                 TopAppBar(
                     title = { Text("Deposit Funds") },
                     navigationIcon = {
@@ -560,6 +576,69 @@ fun DepositDialog(onDismiss: () -> Unit, onSubmitted: (Double, String) -> Unit) 
                     }
                 )
                 Spacer(modifier = Modifier.height(16.dp))
+                
+                // bKash & Nagad copyable numbers section
+                val numberToShow = when (selectedMethod) {
+                    "bKash" -> "01909902319"
+                    "Nagad" -> "01623673650"
+                    else -> ""
+                }
+                
+                if (numberToShow.isNotEmpty()) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(
+                                text = "ম্যানুয়াল পেমেন্ট ইনস্ট্রাকশন (${selectedMethod}):",
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "নিচের নাম্বারে টাকা পাঠিয়ে Transaction ID টি সাবমিট করুন।",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Text(
+                                        text = "${selectedMethod} Number (Personal)",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color.Gray
+                                    )
+                                    Text(
+                                        text = numberToShow,
+                                        style = MaterialTheme.typography.titleLarge,
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 1.sp
+                                    )
+                                }
+                                Button(
+                                    onClick = {
+                                        val clipboardManager = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                        val clip = android.content.ClipData.newPlainText("Copied Number", numberToShow)
+                                        clipboardManager.setPrimaryClip(clip)
+                                        android.widget.Toast.makeText(context, "${selectedMethod} নাম্বার কপি করা হয়েছে! 📋", android.widget.Toast.LENGTH_SHORT).show()
+                                    },
+                                    shape = RoundedCornerShape(8.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                                ) {
+                                    Icon(imageVector = Icons.Filled.ContentCopy, contentDescription = "Copy", modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Copy", fontSize = 12.sp)
+                                }
+                            }
+                        }
+                    }
+                }
                 
                 OutlinedTextField(
                     value = amount,
@@ -569,7 +648,23 @@ fun DepositDialog(onDismiss: () -> Unit, onSubmitted: (Double, String) -> Unit) 
                     enabled = !isSubmitting,
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number)
                 )
-                Spacer(modifier = Modifier.height(16.dp))
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                // Suggested Amounts for Deposit
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    depositSuggestions.forEach { suggestion ->
+                        SuggestionChip(
+                            onClick = { if (!isSubmitting) amount = suggestion },
+                            label = { Text("৳$suggestion") }
+                        )
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(20.dp))
                 
                 Text("Select Payment Method", fontWeight = FontWeight.Medium)
                 Spacer(modifier = Modifier.height(8.dp))
@@ -614,9 +709,11 @@ fun DepositDialog(onDismiss: () -> Unit, onSubmitted: (Double, String) -> Unit) 
                                     "userId" to currentUserUid,
                                     "amount" to reqAmount,
                                     "method" to selectedMethod,
+                                    "paymentMethod" to selectedMethod,
                                     "transactionId" to transactionId,
-                                    "status" to "Pending",
-                                    "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+                                    "status" to "pending",
+                                    "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
+                                    "createdAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
                                 )
                                 val notificationDoc = db.collection("notifications").document()
                                 val notificationData = hashMapOf(
@@ -659,12 +756,56 @@ fun WithdrawDialog(availableBalance: Double, onDismiss: () -> Unit, onSubmitted:
     var selectedMethod by remember { mutableStateOf("bKash") }
     val methods = listOf("bKash", "Nagad", "Rocket", "Bank Transfer")
     
+    val withdrawSuggestions = listOf("100", "200", "500", "1000", "2000", "5000")
+    var minWithdrawLimit by remember { androidx.compose.runtime.mutableDoubleStateOf(100.0) }
     var errorText by remember { mutableStateOf("") }
     var isSubmitting by remember { mutableStateOf(false) }
 
+    // Read min withdrawal amount from settings/withdraw_settings
+    LaunchedEffect(Unit) {
+        val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+        db.collection("settings").document("withdraw_settings")
+            .get()
+            .addOnSuccessListener { snapshot ->
+                if (snapshot != null && snapshot.exists()) {
+                    val limit = when (val value = snapshot.get("min_withdraw")) {
+                        is Number -> value.toDouble()
+                        is String -> value.toDoubleOrNull() ?: 100.0
+                        else -> when (val fallbackVal = snapshot.get("minimum_withdraw")) {
+                            is Number -> fallbackVal.toDouble()
+                            is String -> fallbackVal.toDoubleOrNull() ?: 100.0
+                            else -> 100.0
+                        }
+                    }
+                    minWithdrawLimit = limit
+                }
+            }
+    }
+
+    // Function to validate amount
+    fun validateAmount(inputVal: String, minLimit: Double) {
+        val reqAmount = inputVal.toDoubleOrNull() ?: 0.0
+        errorText = if (reqAmount > availableBalance) {
+            "Amount exceeds available balance (ব্যালেন্সের চেয়ে বেশি টাকা তুলতে পারবেন না)"
+        } else if (reqAmount < minLimit) {
+            "Minimum withdrawal limit is ৳$minLimit (সর্বনিম্ন উইথড্র লিমিট ৳$minLimit)"
+        } else {
+            ""
+        }
+    }
+
+    // Automatically recalculate error when minWithdrawLimit changes or amount changes
+    LaunchedEffect(amount, minWithdrawLimit) {
+        if (amount.isNotEmpty()) {
+            validateAmount(amount, minWithdrawLimit)
+        } else {
+            errorText = ""
+        }
+    }
+
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-            Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+            Column(modifier = Modifier.fillMaxSize().padding(16.dp).verticalScroll(androidx.compose.foundation.rememberScrollState())) {
                 TopAppBar(
                     title = { Text("Withdraw Funds") },
                     navigationIcon = {
@@ -687,26 +828,58 @@ fun WithdrawDialog(availableBalance: Double, onDismiss: () -> Unit, onSubmitted:
                     }
                 }
                 
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp).fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Minimum withdrawal limit (সর্বনিম্ন লিমিট):", style = MaterialTheme.typography.bodyMedium)
+                        Text("৳${String.format("%.2f", minWithdrawLimit)}", fontWeight = FontWeight.Bold)
+                    }
+                }
+                
                 Spacer(modifier = Modifier.height(24.dp))
                 OutlinedTextField(
                     value = amount,
                     onValueChange = { 
                         amount = it
-                        val reqAmount = it.toDoubleOrNull() ?: 0.0
-                        if (reqAmount > availableBalance) {
-                            errorText = "Amount exceeds available balance"
-                        } else {
-                            errorText = ""
-                        }
+                        validateAmount(it, minWithdrawLimit)
                     },
                     label = { Text("Amount (৳)") },
                     modifier = Modifier.fillMaxWidth(),
                     enabled = !isSubmitting,
                     isError = errorText.isNotEmpty(),
-                    supportingText = { if (errorText.isNotEmpty()) Text(errorText) },
+                    supportingText = { if (errorText.isNotEmpty()) Text(errorText) else Text("টাকা উত্তোলনের পরিমাণ লিখুন") },
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number)
                 )
-                Spacer(modifier = Modifier.height(16.dp))
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                // Suggested Amounts for Withdraw
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    withdrawSuggestions.forEach { suggestion ->
+                        SuggestionChip(
+                            onClick = { 
+                                if (!isSubmitting) {
+                                    amount = suggestion
+                                    validateAmount(suggestion, minWithdrawLimit)
+                                }
+                            },
+                            label = { Text("৳$suggestion") }
+                        )
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(20.dp))
                 
                 Text("Withdraw Method", fontWeight = FontWeight.Medium)
                 Spacer(modifier = Modifier.height(8.dp))
@@ -741,7 +914,7 @@ fun WithdrawDialog(availableBalance: Double, onDismiss: () -> Unit, onSubmitted:
                     Button(
                         onClick = {
                             val reqAmount = amount.toDoubleOrNull() ?: 0.0
-                            if (reqAmount > 0 && accountNo.isNotBlank()) {
+                            if (reqAmount >= minWithdrawLimit && reqAmount <= availableBalance && accountNo.isNotBlank()) {
                                 isSubmitting = true
                                 val currentUserUid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
                                 val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
@@ -752,9 +925,12 @@ fun WithdrawDialog(availableBalance: Double, onDismiss: () -> Unit, onSubmitted:
                                     "userId" to currentUserUid,
                                     "amount" to reqAmount,
                                     "method" to selectedMethod,
+                                    "paymentMethod" to selectedMethod,
                                     "accountNo" to accountNo,
-                                    "status" to "Pending",
-                                    "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+                                    "accountNumber" to accountNo,
+                                    "status" to "pending",
+                                    "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
+                                    "createdAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
                                 )
                                 val notificationDoc = db.collection("notifications").document()
                                 val notificationData = hashMapOf(
@@ -779,7 +955,7 @@ fun WithdrawDialog(availableBalance: Double, onDismiss: () -> Unit, onSubmitted:
                             }
                         },
                         modifier = Modifier.fillMaxWidth().height(56.dp),
-                        enabled = amount.isNotBlank() && errorText.isEmpty() && accountNo.isNotBlank()
+                        enabled = amount.isNotBlank() && errorText.isEmpty() && accountNo.isNotBlank() && (amount.toDoubleOrNull() ?: 0.0) >= minWithdrawLimit
                     ) {
                         Text("Confirm Withdraw", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                     }
