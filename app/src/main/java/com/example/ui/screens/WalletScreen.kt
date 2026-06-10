@@ -761,20 +761,22 @@ fun WithdrawDialog(availableBalance: Double, onDismiss: () -> Unit, onSubmitted:
     var errorText by remember { mutableStateOf("") }
     var isSubmitting by remember { mutableStateOf(false) }
 
-    // Read min withdrawal amount from settings/withdraw_settings
+    // Read min withdrawal amount from settings/withdraw_settings in real-time
     LaunchedEffect(Unit) {
         val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
         db.collection("settings").document("withdraw_settings")
-            .get()
-            .addOnSuccessListener { snapshot ->
+            .addSnapshotListener { snapshot, error ->
                 if (snapshot != null && snapshot.exists()) {
                     val limit = when (val value = snapshot.get("min_withdraw")) {
                         is Number -> value.toDouble()
                         is String -> value.toDoubleOrNull() ?: 100.0
-                        else -> when (val fallbackVal = snapshot.get("minimum_withdraw")) {
-                            is Number -> fallbackVal.toDouble()
-                            is String -> fallbackVal.toDoubleOrNull() ?: 100.0
-                            else -> 100.0
+                        else -> {
+                            val v2 = snapshot.get("minimum_withdraw")
+                            when (v2) {
+                                is Number -> v2.toDouble()
+                                is String -> v2.toDoubleOrNull() ?: 100.0
+                                else -> snapshot.getDouble("min_withdraw") ?: 100.0
+                            }
                         }
                     }
                     minWithdrawLimit = limit

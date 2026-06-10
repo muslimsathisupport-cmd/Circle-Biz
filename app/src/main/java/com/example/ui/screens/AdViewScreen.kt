@@ -49,14 +49,53 @@ fun AdViewScreen(task: EarningTask, onBack: () -> Unit) {
 
     val currentUserUid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
 
-    // Listen to Firebase settings & User record
+    // Listen to Ad View settings in real-time independently of user authentication timing
+    LaunchedEffect(Unit) {
+        val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+        db.collection("settings").document("ad_settings")
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    android.util.Log.e("AdViewScreen", "Settings listen failed", error)
+                    android.widget.Toast.makeText(context, "বিজ্ঞাপন সেটিংস আপডেট ব্যর্থ বা অনুমতি নেই: ${error.localizedMessage}", android.widget.Toast.LENGTH_LONG).show()
+                    isLoadingSettings = false
+                    return@addSnapshotListener
+                }
+                if (snapshot != null && snapshot.exists()) {
+                    val rawLimit = snapshot.get("required_ads")
+                    requiredAdsLimit = when (rawLimit) {
+                        is Number -> rawLimit.toInt()
+                        is String -> rawLimit.toIntOrNull() ?: 3
+                        else -> snapshot.getLong("required_ads")?.toInt() ?: 3
+                    }
+                    
+                    val rawReward = snapshot.get("reward_amount")
+                    rewardAmount = when (rawReward) {
+                        is Number -> rawReward.toDouble()
+                        is String -> rawReward.toDoubleOrNull() ?: 0.15
+                        else -> snapshot.getDouble("reward_amount") ?: 0.15
+                    }
+                    
+                    val rawBreak = snapshot.get("break_duration")
+                    breakDuration = when (rawBreak) {
+                        is Number -> rawBreak.toInt()
+                        is String -> rawBreak.toIntOrNull() ?: 10
+                        else -> snapshot.getLong("break_duration")?.toInt() ?: 10
+                    }
+                }
+                isLoadingSettings = false
+            }
+    }
+
+    // Listen to current user watch limits/cooldown progress
     LaunchedEffect(currentUserUid) {
         if (currentUserUid.isNotBlank()) {
             val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
-            
-            // Listen to User's last watch time
             db.collection("users").document(currentUserUid)
                 .addSnapshotListener { snapshot, error ->
+                    if (error != null) {
+                        android.util.Log.w("AdViewScreen", "User listen failed: ${error.localizedMessage}")
+                        return@addSnapshotListener
+                    }
                     if (snapshot != null && snapshot.exists()) {
                         lastAdWatchTime = when (val value = snapshot.get("lastAdWatchTime")) {
                             is Number -> value.toLong()
@@ -65,36 +104,6 @@ fun AdViewScreen(task: EarningTask, onBack: () -> Unit) {
                         }
                     }
                 }
-
-            // Listen to Ad View settings
-            db.collection("settings").document("ad_settings")
-                .addSnapshotListener { snapshot, error ->
-                    if (error != null) {
-                        android.util.Log.w("Firestore", "Listen failed.", error)
-                        isLoadingSettings = false
-                        return@addSnapshotListener
-                    }
-                    if (snapshot != null && snapshot.exists()) {
-                        requiredAdsLimit = when (val value = snapshot.get("required_ads")) {
-                            is Number -> value.toInt()
-                            is String -> value.toIntOrNull() ?: 3
-                            else -> 3
-                        }
-                        rewardAmount = when (val value = snapshot.get("reward_amount")) {
-                            is Number -> value.toDouble()
-                            is String -> value.toDoubleOrNull() ?: 0.15
-                            else -> 0.15
-                        }
-                        breakDuration = when (val value = snapshot.get("break_duration")) {
-                            is Number -> value.toInt()
-                            is String -> value.toIntOrNull() ?: 10
-                            else -> 10
-                        }
-                    }
-                    isLoadingSettings = false
-                }
-        } else {
-            isLoadingSettings = false
         }
     }
 

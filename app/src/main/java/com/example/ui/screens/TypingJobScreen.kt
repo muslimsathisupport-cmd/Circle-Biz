@@ -46,14 +46,46 @@ fun TypingJobScreen(onBack: () -> Unit) {
     val coroutineScope = rememberCoroutineScope()
     val currentUserUid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
 
-    // Listen to typing configs and user progress
+    // Listen to typing configurations in real-time independently of user authentication timing
+    LaunchedEffect(Unit) {
+        val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+        db.collection("settings").document("typing_settings")
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    android.util.Log.e("TypingJobScreen", "Settings listen failed", error)
+                    android.widget.Toast.makeText(context, "টাইপিং সেটিংস আপডেট ব্যর্থ বা অনুমতি নেই: ${error.localizedMessage}", android.widget.Toast.LENGTH_LONG).show()
+                    isLoadingSettings = false
+                    return@addSnapshotListener
+                }
+                if (snapshot != null && snapshot.exists()) {
+                    val rawReward = snapshot.get("reward_amount")
+                    rewardAmount = when (rawReward) {
+                        is Number -> rawReward.toDouble()
+                        is String -> rawReward.toDoubleOrNull() ?: 2.50
+                        else -> snapshot.getDouble("reward_amount") ?: 2.50
+                    }
+                    
+                    val rawBreak = snapshot.get("break_duration")
+                    breakDuration = when (rawBreak) {
+                        is Number -> rawBreak.toInt()
+                        is String -> rawBreak.toIntOrNull() ?: 25
+                        else -> snapshot.getLong("break_duration")?.toInt() ?: 25
+                    }
+                }
+                isLoadingSettings = false
+            }
+    }
+
+    // Listen to current user typing progress/time limits
     LaunchedEffect(currentUserUid) {
         if (currentUserUid.isNotBlank()) {
             val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
-            
-            // Listen to User record
             db.collection("users").document(currentUserUid)
                 .addSnapshotListener { snapshot, error ->
+                    if (error != null) {
+                        android.util.Log.w("TypingJobScreen", "User listen failed: ${error.localizedMessage}")
+                        return@addSnapshotListener
+                    }
                     if (snapshot != null && snapshot.exists()) {
                         lastTypingTime = when (val value = snapshot.get("lastTypingTime")) {
                             is Number -> value.toLong()
@@ -62,31 +94,6 @@ fun TypingJobScreen(onBack: () -> Unit) {
                         }
                     }
                 }
-
-            // Listen to Typing settings
-            db.collection("settings").document("typing_settings")
-                .addSnapshotListener { snapshot, error ->
-                    if (error != null) {
-                        android.util.Log.w("Firestore", "Listen failed.", error)
-                        isLoadingSettings = false
-                        return@addSnapshotListener
-                    }
-                    if (snapshot != null && snapshot.exists()) {
-                        rewardAmount = when (val value = snapshot.get("reward_amount")) {
-                            is Number -> value.toDouble()
-                            is String -> value.toDoubleOrNull() ?: 2.50
-                            else -> 2.50
-                        }
-                        breakDuration = when (val value = snapshot.get("break_duration")) {
-                            is Number -> value.toInt()
-                            is String -> value.toIntOrNull() ?: 25
-                            else -> 25
-                        }
-                    }
-                    isLoadingSettings = false
-                }
-        } else {
-            isLoadingSettings = false
         }
     }
 
