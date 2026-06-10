@@ -13,9 +13,19 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.ui.graphics.drawscope.Stroke
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -47,17 +57,25 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.R
+import coil.compose.AsyncImage
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.yield
 
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -67,6 +85,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import com.example.ui.components.SpecialEarningCard
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.CardGiftcard
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.LocalOffer
 import androidx.compose.material.icons.filled.CheckCircle
@@ -82,6 +105,12 @@ data class EarningTask(
     val color: Color
 )
 
+data class Banner(
+    val imageUrl: String = "",
+    val targetUrl: String = "",
+    val isActive: Boolean = true
+)
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun HomeScreen() {
@@ -89,14 +118,18 @@ fun HomeScreen() {
     var showNotifications by remember { mutableStateOf(false) }
     
     var unreadNotificationsCount by remember { mutableStateOf(0) }
+    var firebaseBanners by remember { mutableStateOf<List<Banner>>(emptyList()) }
+    var dailyCheckInEnabled by remember { mutableStateOf(true) }
+    
     val currentUserUid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
 
     androidx.compose.runtime.DisposableEffect(currentUserUid) {
         if (currentUserUid.isBlank()) {
             onDispose {}
         } else {
-            val listenerReg = com.google.firebase.firestore.FirebaseFirestore.getInstance()
-                .collection("notifications")
+            val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+            
+            val notifListener = db.collection("notifications")
                 .whereEqualTo("userId", currentUserUid)
                 .whereEqualTo("isRead", false)
                 .addSnapshotListener { snapshot, error ->
@@ -104,13 +137,31 @@ fun HomeScreen() {
                         unreadNotificationsCount = snapshot.size()
                     }
                 }
+                
+            val bannerListener = db.collection("banners")
+                .whereEqualTo("isActive", true)
+                .addSnapshotListener { snapshot, error ->
+                    if (snapshot != null) {
+                        firebaseBanners = snapshot.toObjects(Banner::class.java)
+                    }
+                }
+
+            val checkInListener = db.collection("settings").document("daily_checkin")
+                .addSnapshotListener { snapshot, error ->
+                    if (snapshot != null && snapshot.exists()) {
+                        dailyCheckInEnabled = snapshot.getBoolean("is_enabled") ?: true
+                    }
+                }
+                
             onDispose {
-                listenerReg.remove()
+                notifListener.remove()
+                bannerListener.remove()
+                checkInListener.remove()
             }
         }
     }
     
-    val tasks = listOf(
+    val tasks = mutableListOf(
         EarningTask("Mobile Recharge", Icons.Filled.PhoneAndroid, Color(0xFF4CAF50)),
         EarningTask("Drive Offer", Icons.Filled.LocalOffer, Color(0xFF2196F3)),
         EarningTask("Reselling", Icons.Filled.ShoppingBag, Color(0xFFFF9800)),
@@ -119,7 +170,7 @@ fun HomeScreen() {
         EarningTask("Gmail Sell", Icons.Filled.Email, Color(0xFFF44336)),
         EarningTask("Facebook Sell", Icons.Filled.ThumbUp, Color(0xFF1877F2)),
         EarningTask("Instagram Sell", Icons.Filled.AccountCircle, Color(0xFFE1306C)),
-        EarningTask("WhatsApp Sell", Icons.Filled.Phone, Color(0xFF25D366)),
+        EarningTask("WhatsApp Sell", Icons.Filled.Phone, Color(0xFF25D336)),
         EarningTask("Telegram Sell", Icons.Filled.Send, Color(0xFF0088CC)),
         EarningTask("Job Posts", Icons.Filled.PostAdd, Color(0xFFFF5722)),
         EarningTask("Quiz Job", Icons.Filled.QuestionMark, Color(0xFFFFC107)),
@@ -127,7 +178,15 @@ fun HomeScreen() {
         EarningTask("Ad View", Icons.Filled.PlayCircle, Color(0xFF673AB7))
     )
 
-    Column(modifier = Modifier.fillMaxSize()) {
+    var isExpanded by remember { mutableStateOf(false) }
+    
+    val visibleTasks = if (isExpanded) tasks else tasks.take(8)
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+    ) {
         TopAppBar(
             title = {
                 Text(
@@ -158,11 +217,21 @@ fun HomeScreen() {
         )
 
         // Banner Slider
-        val pagerState = rememberPagerState(pageCount = { 2 })
-        val banners = listOf(
-            R.drawable.banner_recharge_1780983866956,
-            R.drawable.banner_gifts_1780983879820
-        )
+        val pagerState = rememberPagerState(pageCount = { 
+            if (firebaseBanners.isEmpty()) 1 else firebaseBanners.size 
+        })
+        
+        // Auto-sliding logic
+        LaunchedEffect(firebaseBanners) {
+            if (firebaseBanners.size > 1) {
+                while (true) {
+                    yield()
+                    delay(3000)
+                    val nextPage = (pagerState.currentPage + 1) % firebaseBanners.size
+                    pagerState.animateScrollToPage(nextPage)
+                }
+            }
+        }
 
         Box(
             modifier = Modifier
@@ -176,32 +245,51 @@ fun HomeScreen() {
                     .fillMaxSize()
                     .clip(RoundedCornerShape(16.dp))
             ) { page ->
-                Image(
-                    painter = painterResource(id = banners[page]),
-                    contentDescription = "Promo Banner",
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
+                if (firebaseBanners.isEmpty()) {
+                    // Placeholder while loading or if empty
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.LightGray.copy(alpha = 0.3f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Image,
+                            contentDescription = null,
+                            tint = Color.Gray,
+                            modifier = Modifier.size(48.dp)
+                        )
+                    }
+                } else {
+                    AsyncImage(
+                        model = firebaseBanners[page].imageUrl,
+                        contentDescription = "Promo Banner",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                }
             }
 
             // Pager Indicator
-            Row(
-                Modifier
-                    .height(24.dp)
-                    .fillMaxWidth()
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 8.dp),
-                horizontalArrangement = Arrangement.Center
-            ) {
-                repeat(2) { iteration ->
-                    val color = if (pagerState.currentPage == iteration) Color.White else Color.White.copy(alpha = 0.5f)
-                    Box(
-                        modifier = Modifier
-                            .padding(2.dp)
-                            .clip(CircleShape)
-                            .background(color)
-                            .size(8.dp)
-                    )
+            if (firebaseBanners.size > 1) {
+                Row(
+                    Modifier
+                        .height(24.dp)
+                        .fillMaxWidth()
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 8.dp),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    repeat(firebaseBanners.size) { iteration ->
+                        val color = if (pagerState.currentPage == iteration) Color.White else Color.White.copy(alpha = 0.5f)
+                        Box(
+                            modifier = Modifier
+                                .padding(2.dp)
+                                .clip(CircleShape)
+                                .background(color)
+                                .size(8.dp)
+                        )
+                    }
                 }
             }
         }
@@ -215,18 +303,92 @@ fun HomeScreen() {
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
         )
 
-        // Grid of services
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(4),
-            contentPadding = PaddingValues(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            modifier = Modifier.fillMaxSize()
-        ) {
-            items(tasks) { task ->
-                EarningTaskItem(task, onClick = { selectedTask = task })
+        // Grid of services (Manual implementation for scrollability)
+        Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+            visibleTasks.chunked(4).forEach { rowTasks ->
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    rowTasks.forEach { task ->
+                        Box(modifier = Modifier.weight(1f)) {
+                            EarningTaskItem(task, onClick = { selectedTask = task })
+                        }
+                    }
+                    // Fill empty spaces in the last row if needed
+                    repeat(4 - rowTasks.size) {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+                }
             }
         }
+
+        // See All / View All Button
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            androidx.compose.material3.TextButton(
+                onClick = { isExpanded = !isExpanded },
+                shape = RoundedCornerShape(24.dp),
+                colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+                )
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 8.dp)) {
+                    Text(
+                        text = if (isExpanded) "Show Less" else "View All",
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Icon(
+                        imageVector = if (isExpanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+        }
+
+        // Special Earning Section
+        Column(modifier = Modifier.padding(bottom = 16.dp)) {
+            Text(
+                text = "Special Earning",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            )
+            
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                item {
+                    SpecialEarningCard(
+                        title = "Daily Spin",
+                        subtitle = "Earn ৳0.50 per spin",
+                        icon = Icons.Filled.PlayCircle,
+                        bgColor = Color(0xFF673AB7),
+                        onClick = { selectedTask = EarningTask("Daily Spin", Icons.Filled.PlayCircle, Color(0xFF673AB7)) }
+                    )
+                }
+                item {
+                    SpecialEarningCard(
+                        title = "Scratch Card",
+                        subtitle = "Scratch & Win Coins",
+                        icon = Icons.Filled.CardGiftcard,
+                        bgColor = Color(0xFFFF9800),
+                        onClick = { selectedTask = EarningTask("Scratch Card", Icons.Filled.CardGiftcard, Color(0xFFFF9800)) }
+                    )
+                }
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(32.dp))
     }
 
     if (selectedTask != null) {
@@ -242,6 +404,10 @@ fun HomeScreen() {
             com.example.ui.screens.JobPostScreen(onBack = { selectedTask = null })
         } else if (selectedTask!!.title == "Micro Job") {
             com.example.ui.screens.MicroJobScreen(onBack = { selectedTask = null })
+        } else if (selectedTask!!.title == "Daily Spin") {
+            com.example.ui.screens.SpinScreen(onBack = { selectedTask = null })
+        } else if (selectedTask!!.title == "Scratch Card") {
+            com.example.ui.screens.ScratchCardScreen(onBack = { selectedTask = null })
         } else if (selectedTask!!.title == "Reselling" || selectedTask!!.title == "Blood") {
             ComingSoonBottomSheet(task = selectedTask!!, onDismiss = { selectedTask = null })
         } else if (selectedTask!!.title.contains("Sell")) {
@@ -290,9 +456,11 @@ fun EarningTaskItem(task: EarningTask, onClick: () -> Unit) {
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.Medium,
             maxLines = 2,
+            minLines = 2,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurface,
-            fontSize = 11.sp
+            fontSize = 11.sp,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 32.dp)
         )
     }
 }

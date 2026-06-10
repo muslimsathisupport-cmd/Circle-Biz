@@ -196,8 +196,11 @@ fun ProfileListItem(
 ) {
     androidx.compose.material3.Surface(
         onClick = onClick,
-        color = Color.Transparent,
-        modifier = Modifier.fillMaxWidth()
+        color = Color(0xFFF5F5F5).copy(alpha = 0.5f),
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp)
     ) {
         Row(
             modifier = Modifier
@@ -602,8 +605,12 @@ fun ProfileScreen(onLogout: () -> Unit) {
 
     var showSettings by remember { mutableStateOf(false) }
     var showAdminSettings by remember { mutableStateOf(false) }
-    var showDailyCheckInDialog by remember { mutableStateOf(false) }
+    var showDailyCheckInFullScreen by remember { mutableStateOf(false) }
     var showReferEarnDialog by remember { mutableStateOf(false) }
+
+    if (showDailyCheckInFullScreen) {
+        DailyCheckInScreen(onBack = { showDailyCheckInFullScreen = false })
+    }
 
     if (showSettings) {
         com.example.ui.screens.SettingsScreen(onBack = { showSettings = false })
@@ -613,88 +620,6 @@ fun ProfileScreen(onLogout: () -> Unit) {
         com.example.ui.screens.AdminSettingsScreen(onBack = { showAdminSettings = false })
     }
 
-    if (showDailyCheckInDialog) {
-        Dialog(onDismissRequest = { showDailyCheckInDialog = false }) {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface),
-                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(64.dp)
-                            .background(Color(0xFFFFF3E0), RoundedCornerShape(16.dp)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.CardGiftcard,
-                            contentDescription = null,
-                            tint = Color(0xFFFB8C00),
-                            modifier = Modifier.size(36.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(16.dp))
-                    
-                    Text(
-                        text = "Daily Check-in (দৈনিক পুরস্কার)",
-                        style = androidx.compose.material3.MaterialTheme.typography.titleLarge,
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                        color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface
-                    )
-                    
-                    Spacer(modifier = Modifier.height(12.dp))
-                    
-                    Text(
-                        text = "Claim your daily reward of ৳$dailyRewardAmount by watching $requiredAdsForReward short ads.",
-                        style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
-                        textAlign = TextAlign.Center,
-                        color = Color.Gray
-                    )
-                    
-                    Spacer(modifier = Modifier.height(24.dp))
-                    
-                    val currentTime = System.currentTimeMillis()
-                    val msIn24Hours = 24 * 60 * 60 * 1000
-                    val canCheckIn = (currentTime - lastCheckInTime) > msIn24Hours
-                    
-                    Button(
-                        onClick = {
-                            showDailyCheckInDialog = false
-                            if (canCheckIn) {
-                                handleAdReward()
-                            } else {
-                                snackbarMessage = "You have already checked in today! Try again later."
-                            }
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(50.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        enabled = canCheckIn
-                    ) {
-                        Text(if (canCheckIn) "Claim Daily Reward" else "Come back tomorrow")
-                    }
-                    
-                    Spacer(modifier = Modifier.height(8.dp))
-                    
-                    androidx.compose.material3.TextButton(
-                        onClick = { showDailyCheckInDialog = false }
-                    ) {
-                        Text("বন্ধ করুন")
-                    }
-                }
-            }
-        }
-    }
 
     if (showReferEarnDialog) {
         Dialog(onDismissRequest = { showReferEarnDialog = false }) {
@@ -829,33 +754,33 @@ fun ProfileScreen(onLogout: () -> Unit) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(210.dp),
+                    .height(140.dp),
                 contentAlignment = Alignment.BottomCenter
             ) {
                 // Curved top banner matching the screenshot
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(160.dp)
+                        .height(100.dp)
                         .align(Alignment.TopCenter)
                         .background(
-                            color = androidx.compose.material3.MaterialTheme.colorScheme.primary,
+                            color = Color(0xFF2196F3),
                             shape = RoundedCornerShape(bottomStart = 32.dp, bottomEnd = 32.dp)
                         )
                 ) {
                     // Left Decorator Circle
                     Box(
                         modifier = Modifier
-                            .size(140.dp)
-                            .offset(x = (-30).dp, y = (-20).dp)
+                            .size(100.dp)
+                            .offset(x = (-20).dp, y = (-10).dp)
                             .background(Color.White.copy(alpha = 0.12f), androidx.compose.foundation.shape.CircleShape)
                     )
                     // Right Decorator Circle
                     Box(
                         modifier = Modifier
-                            .size(110.dp)
+                            .size(80.dp)
                             .align(Alignment.TopEnd)
-                            .offset(x = 20.dp, y = (-15).dp)
+                            .offset(x = 10.dp, y = (-5).dp)
                             .background(Color.White.copy(alpha = 0.12f), androidx.compose.foundation.shape.CircleShape)
                     )
                 }
@@ -863,7 +788,7 @@ fun ProfileScreen(onLogout: () -> Unit) {
                 // Center overlapping Avatar Frame
                 Box(
                     modifier = Modifier
-                        .size(106.dp)
+                        .size(90.dp)
                         .background(Color.White, androidx.compose.foundation.shape.CircleShape)
                         .padding(3.dp),
                     contentAlignment = Alignment.Center
@@ -877,7 +802,7 @@ fun ProfileScreen(onLogout: () -> Unit) {
                         Icon(
                             imageVector = Icons.Filled.AccountCircle,
                             contentDescription = "Avatar",
-                            modifier = Modifier.size(76.dp),
+                            modifier = Modifier.size(64.dp),
                             tint = androidx.compose.material3.MaterialTheme.colorScheme.onPrimaryContainer
                         )
                     }
@@ -889,13 +814,13 @@ fun ProfileScreen(onLogout: () -> Unit) {
                 CircularProgressIndicator(modifier = Modifier.size(24.dp))
             } else {
                 Text(
-                    text = "${firstName} ${lastName}".trim().ifEmpty { "ব্যবহারকারী" },
+                    text = "${firstName} ${lastName}".trim().ifEmpty { "User" },
                     style = androidx.compose.material3.MaterialTheme.typography.titleLarge,
                     fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
                     color = androidx.compose.material3.MaterialTheme.colorScheme.onBackground
                 )
                 Text(
-                    text = mobile.ifEmpty { "মোবাইল নম্বর পাওয়া যায়নি" },
+                    text = mobile.ifEmpty { "Mobile number not found" },
                     style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
                     color = Color.Gray
                 )
@@ -904,7 +829,7 @@ fun ProfileScreen(onLogout: () -> Unit) {
                 
                 // Balance capsule badge
                 androidx.compose.material3.Surface(
-                    color = androidx.compose.material3.MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                    color = Color(0xFF2196F3).copy(alpha = 0.12f),
                     shape = RoundedCornerShape(16.dp),
                     modifier = Modifier.padding(horizontal = 16.dp)
                 ) {
@@ -915,15 +840,15 @@ fun ProfileScreen(onLogout: () -> Unit) {
                         Icon(
                             imageVector = Icons.Filled.Wallet,
                             contentDescription = null,
-                            tint = androidx.compose.material3.MaterialTheme.colorScheme.primary,
+                            tint = Color(0xFF2196F3),
                             modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "বর্তমান ব্যালেন্স: ৳${String.format("%.2f", balance)}",
+                            text = "Current Balance: ৳${String.format("%.2f", balance)}",
                             style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
                             fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                            color = androidx.compose.material3.MaterialTheme.colorScheme.primary
+                            color = Color(0xFF2196F3)
                         )
                     }
                 }
@@ -931,128 +856,87 @@ fun ProfileScreen(onLogout: () -> Unit) {
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // White rounded menu container matching the screenshot layout
-            Card(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                colors = CardDefaults.cardColors(containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface),
-                shape = RoundedCornerShape(24.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.3f))
+                    .padding(vertical = 8.dp)
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 8.dp)
-                ) {
-                    val currentTime = System.currentTimeMillis()
-                    val msIn24Hours = 24 * 60 * 60 * 1000
-                    val canCheckIn = (currentTime - lastCheckInTime) > msIn24Hours
+                val currentTime = System.currentTimeMillis()
+                val msIn24Hours = 24 * 60 * 60 * 1000
+                val canCheckIn = (currentTime - lastCheckInTime) > msIn24Hours
 
-                    // 1. Edit Profile
+                // 1. Edit Profile
+                ProfileListItem(
+                    icon = Icons.Default.Edit,
+                    title = "Edit Profile",
+                    iconBgColor = Color(0xFFE3F2FD),
+                    iconTint = Color(0xFF1E88E5),
+                    onClick = { showEditProfile = true }
+                )
+                
+                // Admin Settings Panel
+                val userEmail = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.email ?: ""
+                val isAdmin = userEmail.lowercase() == "its.me.calloftamim@gmail.com"
+
+                if (isAdmin) {
                     ProfileListItem(
-                        icon = Icons.Default.Edit,
-                        title = "প্রোফাইল এডিট করুন (Edit Profile)",
-                        iconBgColor = Color(0xFFE3F2FD),
-                        iconTint = Color(0xFF1E88E5),
-                        onClick = { showEditProfile = true }
-                    )
-                    
-                    androidx.compose.material3.HorizontalDivider(
-                        color = Color.LightGray.copy(alpha = 0.3f),
-                        modifier = Modifier.padding(horizontal = 16.dp)
-                    )
-
-                    // Admin Settings Panel
-                    val userEmail = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.email ?: ""
-                    val isAdmin = userEmail.lowercase() == "its.me.calloftamim@gmail.com"
-
-                    if (isAdmin) {
-                        ProfileListItem(
-                            icon = Icons.Default.Build,
-                            title = "অ্যাডমিন কন্ট্রোল (Admin Panel)",
-                            iconBgColor = Color(0xFFE0F7FA),
-                            iconTint = Color(0xFF00ACC1),
-                            onClick = { showAdminSettings = true }
-                        )
-
-                        androidx.compose.material3.HorizontalDivider(
-                            color = Color.LightGray.copy(alpha = 0.3f),
-                            modifier = Modifier.padding(horizontal = 16.dp)
-                        )
-                    }
-
-                    // 2. Settings
-                    ProfileListItem(
-                        icon = Icons.Default.Settings,
-                        title = "সেটিংস (System Settings)",
-                        iconBgColor = Color(0xFFE8F5E9),
-                        iconTint = Color(0xFF43A047),
-                        onClick = { showSettings = true }
-                    )
-                    
-                    androidx.compose.material3.HorizontalDivider(
-                        color = Color.LightGray.copy(alpha = 0.3f),
-                        modifier = Modifier.padding(horizontal = 16.dp)
-                    )
-                    
-                    // 3. Daily Check-in
-                    ProfileListItem(
-                        icon = Icons.Filled.CardGiftcard,
-                        title = "ডেইলি চেক-ইন (Daily Check-in)",
-                        iconBgColor = Color(0xFFFFF3E0),
-                        iconTint = Color(0xFFFB8C00),
-                        trailingText = if (canCheckIn) "৳$dailyRewardAmount" else "সম্পন্ন",
-                        onClick = { showDailyCheckInDialog = true }
-                    )
-                    
-                    androidx.compose.material3.HorizontalDivider(
-                        color = Color.LightGray.copy(alpha = 0.3f),
-                        modifier = Modifier.padding(horizontal = 16.dp)
-                    )
-
-                    // 4. Refer & Earn
-                    ProfileListItem(
-                        icon = Icons.Filled.Share,
-                        title = "রেফার ও আয় (Refer & Earn)",
-                        iconBgColor = Color(0xFFF3E5F5),
-                        iconTint = Color(0xFF8E24AA),
-                        trailingText = "৳$referRewardAmount",
-                        onClick = { showReferEarnDialog = true }
-                    )
-                    
-                    androidx.compose.material3.HorizontalDivider(
-                        color = Color.LightGray.copy(alpha = 0.3f),
-                        modifier = Modifier.padding(horizontal = 16.dp)
-                    )
-
-                    // 5. Logout
-                    ProfileListItem(
-                        icon = Icons.Default.ExitToApp,
-                        title = "লগ আউট (Log Out)",
-                        iconBgColor = Color(0xFFECEFF1),
-                        iconTint = Color(0xFF546E7A),
-                        onClick = {
-                            UserSession.clearSession(context)
-                            onLogout()
-                        }
-                    )
-                    
-                    androidx.compose.material3.HorizontalDivider(
-                        color = Color.LightGray.copy(alpha = 0.3f),
-                        modifier = Modifier.padding(horizontal = 16.dp)
-                    )
-
-                    // 6. Delete Account
-                    ProfileListItem(
-                        icon = Icons.Default.Delete,
-                        title = "একাউন্ট ডিলিট করুন (Delete Account)",
-                        iconBgColor = Color(0xFFFFEBEE),
-                        iconTint = Color(0xFFE53935),
-                        onClick = { showDeleteConfirm = true }
+                        icon = Icons.Default.Build,
+                        title = "Admin Panel",
+                        iconBgColor = Color(0xFFE0F7FA),
+                        iconTint = Color(0xFF00ACC1),
+                        onClick = { showAdminSettings = true }
                     )
                 }
+
+                // 2. Settings
+                ProfileListItem(
+                    icon = Icons.Default.Settings,
+                    title = "System Settings",
+                    iconBgColor = Color(0xFFE8F5E9),
+                    iconTint = Color(0xFF43A047),
+                    onClick = { showSettings = true }
+                )
+                
+                // 3. Daily Check-in
+                ProfileListItem(
+                    icon = Icons.Filled.CardGiftcard,
+                    title = "Daily Check-in",
+                    iconBgColor = Color(0xFFFFF3E0),
+                    iconTint = Color(0xFFFB8C00),
+                    trailingText = if (canCheckIn) "৳$dailyRewardAmount" else "Completed",
+                    onClick = { showDailyCheckInFullScreen = true }
+                )
+                
+                // 4. Refer & Earn
+                ProfileListItem(
+                    icon = Icons.Filled.Share,
+                    title = "Refer & Earn",
+                    iconBgColor = Color(0xFFF3E5F5),
+                    iconTint = Color(0xFF8E24AA),
+                    trailingText = "৳$referRewardAmount",
+                    onClick = { showReferEarnDialog = true }
+                )
+
+                // 5. Logout
+                ProfileListItem(
+                    icon = Icons.Default.ExitToApp,
+                    title = "Log Out",
+                    iconBgColor = Color(0xFFECEFF1),
+                    iconTint = Color(0xFF546E7A),
+                    onClick = {
+                        UserSession.clearSession(context)
+                        onLogout()
+                    }
+                )
+
+                // 6. Delete Account
+                ProfileListItem(
+                    icon = Icons.Default.Delete,
+                    title = "Delete Account",
+                    iconBgColor = Color(0xFFFFEBEE),
+                    iconTint = Color(0xFFE53935),
+                    onClick = { showDeleteConfirm = true }
+                )
             }
             
             Spacer(modifier = Modifier.height(30.dp))
