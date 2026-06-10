@@ -345,14 +345,14 @@ fun WalletScreen() {
 @Composable
 fun WalletCard(balance: Double, earnings: Double, withdrawn: Double, deposited: Double) {
     val gradientBrush = Brush.linearGradient(
-        colors = listOf(Color(0xFF1E3C72), Color(0xFF2A5298))
+        colors = listOf(Color(0xFF000000), Color(0xFF1E1E1E))
     )
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .height(200.dp),
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(12.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
     ) {
         Box(
@@ -372,12 +372,12 @@ fun WalletCard(balance: Double, earnings: Double, withdrawn: Double, deposited: 
                 ) {
                     Column {
                         Text(
-                            text = "Available Balance",
+                            text = "Deposit Balance",
                             color = Color.White.copy(alpha = 0.8f),
                             style = MaterialTheme.typography.bodyMedium
                         )
                         Text(
-                            text = "৳${String.format("%.2f", balance)}",
+                            text = "৳${String.format("%.2f", deposited)}",
                             color = Color.White,
                             style = MaterialTheme.typography.displaySmall,
                             fontWeight = FontWeight.Bold
@@ -395,9 +395,8 @@ fun WalletCard(balance: Double, earnings: Double, withdrawn: Double, deposited: 
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    WalletStatItem("Earnings", "৳${String.format("%.2f", earnings)}")
-                    WalletStatItem("Withdraw", "৳${String.format("%.2f", withdrawn)}")
-                    WalletStatItem("Deposit", "৳${String.format("%.2f", deposited)}")
+                    WalletStatItem("Earning Balance", "৳${String.format("%.2f", balance)}")
+                    WalletStatItem("Withdrawal Balance", "৳${String.format("%.2f", withdrawn)}")
                 }
             }
         }
@@ -483,7 +482,7 @@ fun EarningCard(title: String, amount: String, modifier: Modifier = Modifier) {
     Card(
         modifier = modifier.height(80.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        shape = RoundedCornerShape(16.dp)
+        shape = RoundedCornerShape(12.dp)
     ) {
         Column(
             modifier = Modifier
@@ -519,6 +518,7 @@ fun TransactionItem(transaction: Transaction, onClick: () -> Unit) {
             .fillMaxWidth()
             .padding(vertical = 6.dp)
             .clickable(onClick = onClick),
+        shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
@@ -820,6 +820,7 @@ fun WithdrawDialog(availableBalance: Double, onDismiss: () -> Unit, onSubmitted:
                 
                 Card(
                     modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
                 ) {
                     Row(
@@ -836,6 +837,7 @@ fun WithdrawDialog(availableBalance: Double, onDismiss: () -> Unit, onSubmitted:
                 
                 Card(
                     modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                 ) {
                     Row(
@@ -999,7 +1001,7 @@ fun TransactionDetailsDialog(transaction: Transaction, onDismiss: () -> Unit) {
     Dialog(onDismissRequest = onDismiss) {
         Card(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(12.dp),
         ) {
             Column(modifier = Modifier.padding(24.dp)) {
                 Text("Transaction Details", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
