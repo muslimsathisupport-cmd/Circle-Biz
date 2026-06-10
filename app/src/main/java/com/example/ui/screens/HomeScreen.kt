@@ -98,6 +98,7 @@ import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.clickable
 
 data class EarningTask(
     val title: String,
@@ -140,10 +141,70 @@ fun HomeScreen() {
                 }
                 
             val bannerListener = db.collection("banners")
-                .whereEqualTo("isActive", true)
                 .addSnapshotListener { snapshot, error ->
+                    if (error != null) {
+                        android.util.Log.e("FirebaseBanners", "Listener failed", error)
+                        return@addSnapshotListener
+                    }
                     if (snapshot != null) {
-                        firebaseBanners = snapshot.toObjects(Banner::class.java)
+                        val list = mutableListOf<Pair<Banner, Any?>>()
+                        for (doc in snapshot.documents) {
+                            try {
+                                val imgUrl = doc.getString("imageUrl") 
+                                    ?: doc.getString("image_url") 
+                                    ?: doc.getString("image") 
+                                    ?: ""
+                                val tgtUrl = doc.getString("targetUrl") 
+                                    ?: doc.getString("target_url") 
+                                    ?: doc.getString("url") 
+                                    ?: ""
+                                
+                                var activeVal = true
+                                if (doc.contains("isActive")) {
+                                    activeVal = doc.getBoolean("isActive") 
+                                        ?: (doc.getString("isActive")?.lowercase() == "true")
+                                } else if (doc.contains("is_active")) {
+                                    activeVal = doc.getBoolean("is_active") 
+                                        ?: (doc.getString("is_active")?.lowercase() == "true")
+                                } else if (doc.contains("active")) {
+                                    activeVal = doc.getBoolean("active") 
+                                        ?: (doc.getString("active")?.lowercase() == "true")
+                                }
+                                
+                                val createdAt = doc.get("createdAt")
+                                
+                                if (imgUrl.isNotBlank() && activeVal) {
+                                    list.add(Pair(Banner(imageUrl = imgUrl, targetUrl = tgtUrl, isActive = activeVal), createdAt))
+                                }
+                            } catch (e: Exception) {
+                                android.util.Log.e("FirebaseBanners", "Error parsing banner doc: ${doc.id}", e)
+                            }
+                        }
+                        
+                        // Sort by createdAt descending
+                        val sortedBanners = list.sortedWith { a, b ->
+                            val timeA = a.second
+                            val timeB = b.second
+                            when {
+                                timeA == null && timeB == null -> 0
+                                timeA == null -> 1
+                                timeB == null -> -1
+                                timeA is com.google.firebase.Timestamp && timeB is com.google.firebase.Timestamp -> {
+                                    timeB.compareTo(timeA)
+                                }
+                                timeA is java.util.Date && timeB is java.util.Date -> {
+                                    timeB.compareTo(timeA)
+                                }
+                                timeA is Number && timeB is Number -> {
+                                    timeB.toDouble().compareTo(timeA.toDouble())
+                                }
+                                else -> {
+                                    timeB.toString().compareTo(timeA.toString())
+                                }
+                            }
+                        }.map { it.first }
+                        
+                        firebaseBanners = sortedBanners
                     }
                 }
 
@@ -189,7 +250,7 @@ fun HomeScreen() {
 
     var isExpanded by remember { mutableStateOf(false) }
     
-    val visibleTasks = if (isExpanded) tasks else tasks.take(8)
+    val visibleTasks = if (isExpanded) tasks else tasks.take(12)
 
     Column(
         modifier = Modifier
@@ -270,10 +331,25 @@ fun HomeScreen() {
                         )
                     }
                 } else {
+                    val banner = firebaseBanners[page]
                     AsyncImage(
-                        model = firebaseBanners[page].imageUrl,
+                        model = banner.imageUrl,
                         contentDescription = "Promo Banner",
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clickable {
+                                if (banner.targetUrl.isNotBlank()) {
+                                    try {
+                                        val intent = android.content.Intent(
+                                            android.content.Intent.ACTION_VIEW,
+                                            android.net.Uri.parse(banner.targetUrl)
+                                        )
+                                        context.startActivity(intent)
+                                    } catch (e: Exception) {
+                                        android.util.Log.e("HomeScreen", "Failed to open target url", e)
+                                    }
+                                }
+                            },
                         contentScale = ContentScale.Crop
                     )
                 }
@@ -305,18 +381,50 @@ fun HomeScreen() {
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        Text(
-            text = "Earning Tasks",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Earning Tasks",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+            
+            androidx.compose.material3.TextButton(
+                onClick = { isExpanded = !isExpanded },
+                shape = RoundedCornerShape(24.dp),
+                colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+                ),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = if (isExpanded) "Show Less" else "View All",
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                    Spacer(modifier = Modifier.width(2.dp))
+                    Icon(
+                        imageVector = if (isExpanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+        }
 
         // Grid of services (Manual implementation for scrollability)
         Column(modifier = Modifier.padding(horizontal = 16.dp)) {
             visibleTasks.chunked(4).forEach { rowTasks ->
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     rowTasks.forEach { task ->
@@ -332,36 +440,7 @@ fun HomeScreen() {
             }
         }
 
-        // See All / View All Button
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 8.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            androidx.compose.material3.TextButton(
-                onClick = { isExpanded = !isExpanded },
-                shape = RoundedCornerShape(24.dp),
-                colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
-                )
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 8.dp)) {
-                    Text(
-                        text = if (isExpanded) "Show Less" else "View All",
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Icon(
-                        imageVector = if (isExpanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp),
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                }
-            }
-        }
+        Spacer(modifier = Modifier.height(20.dp))
 
         // Special Earning Section
         Column(modifier = Modifier.padding(bottom = 16.dp)) {
@@ -369,7 +448,7 @@ fun HomeScreen() {
                 text = "Special Earning",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
             )
             
             LazyRow(

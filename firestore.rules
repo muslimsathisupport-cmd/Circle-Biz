@@ -78,6 +78,10 @@ service cloud.firestore {
     match /job_posts/{jobId} {
       allow read, write: if true;
     }
+    // banners collection
+    match /banners/{bannerId} {
+      allow read, write: if true;
+    }
     match /{document=**} {
       allow read, write: if true;
     }
