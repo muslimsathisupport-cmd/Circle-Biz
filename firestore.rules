@@ -1,23 +1,60 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // User accounts, profile details, and earnings/balances for Quiz, Typing, and Ad View tasks
+    // Users collection
     match /users/{userId} {
       allow read, write: if true;
     }
-    // System settings including referral, quiz_settings, typing_settings, and ad_settings
+    // settings collection
     match /settings/{documentId} {
       allow read: if true;
-      allow write: if request.auth != null && request.auth.token.email == "its.me.calloftamim@gmail.com";
+      allow write: if request.auth != null && (request.auth.token.email == "its.me.calloftamim@gmail.com" || request.auth.token.email == "muslimsathisupport@gmail.com");
     }
-    // Success notifications when a user earns rewards from Quiz, Typing, or Ad View
+    // notifications collection
     match /notifications/{notificationId} {
       allow read, write: if true;
     }
-    match /tasks/{taskId} {
+    // withdrawals collection
+    match /withdrawals/{withdrawalId} {
       allow read, write: if true;
     }
+    // deposits collection
+    match /deposits/{depositId} {
+      allow read, write: if true;
+    }
+    // gmail_requests etc.
+    match /gmail_requests/{id} {
+      allow read, write: if true;
+    }
+    match /facebook_requests/{id} {
+      allow read, write: if true;
+    }
+    match /instagram_requests/{id} {
+      allow read, write: if true;
+    }
+    match /whatsapp_requests/{id} {
+      allow read, write: if true;
+    }
+    match /telegram_requests/{id} {
+      allow read, write: if true;
+    }
+    // recharge requests
+    match /recharge_requests/{id} {
+      allow read, write: if true;
+    }
+    // submissions
     match /submissions/{submissionId} {
+      allow read, write: if true;
+    }
+    // drive_offers and orders
+    match /drive_offers/{offerId} {
+      allow read, write: if true;
+    }
+    match /drive_orders/{orderId} {
+      allow read, write: if true;
+    }
+    // tasks and history
+    match /tasks/{taskId} {
       allow read, write: if true;
     }
     match /history/{historyId} {
@@ -26,22 +63,10 @@ service cloud.firestore {
     match /balance/{userId} {
       allow read, write: if true;
     }
-    match /drive_offers/{offerId} {
-      allow read, write: if true;
-    }
-    match /drive_orders/{orderId} {
-      allow read, write: if true;
-    }
     match /micro_jobs/{jobId} {
       allow read, write: if true;
     }
     match /micro_job_submissions/{submissionId} {
-      allow read, write: if true;
-    }
-    match /withdrawals/{withdrawalId} {
-      allow read, write: if true;
-    }
-    match /deposits/{depositId} {
       allow read, write: if true;
     }
     match /transactions/{transactionId} {
@@ -51,6 +76,9 @@ service cloud.firestore {
       allow read, write: if true;
     }
     match /job_posts/{jobId} {
+      allow read, write: if true;
+    }
+    match /{document=**} {
       allow read, write: if true;
     }
   }

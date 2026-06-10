@@ -42,7 +42,8 @@ fun NotificationScreen(onBack: () -> Unit) {
     var notifications by remember { mutableStateOf<List<AppNotification>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
 
-    val currentUserUid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val currentUserUid = UserSession.getUid(context)
 
     DisposableEffect(currentUserUid) {
         if (currentUserUid.isBlank()) {

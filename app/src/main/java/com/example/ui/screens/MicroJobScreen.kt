@@ -249,6 +249,7 @@ fun MicroJobDetailsDialog(job: MicroJob, onDismiss: () -> Unit, onTaskSubmitted:
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SubmitProofDialog(job: MicroJob, onDismiss: () -> Unit, onSubmit: (String) -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     var message by remember { mutableStateOf("") }
     var screenshotsUploaded by remember { mutableStateOf(0) }
     var isSubmitting by remember { mutableStateOf(false) }
@@ -293,7 +294,7 @@ fun SubmitProofDialog(job: MicroJob, onDismiss: () -> Unit, onSubmit: (String) -
                     Button(
                         onClick = {
                             isSubmitting = true
-                            val currentUserUid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+                            val currentUserUid = UserSession.getUid(context)
                             val data = hashMapOf(
                                 "userId" to currentUserUid,
                                 "jobId" to job.id,
@@ -329,9 +330,10 @@ fun SubmitProofDialog(job: MicroJob, onDismiss: () -> Unit, onSubmit: (String) -
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MicroJobHistoryDialog(onDismiss: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     var historyList by remember { mutableStateOf<List<Map<String, Any>>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
-    val currentUserUid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+    val currentUserUid = UserSession.getUid(context)
 
     LaunchedEffect(currentUserUid) {
         if (currentUserUid.isNotBlank()) {

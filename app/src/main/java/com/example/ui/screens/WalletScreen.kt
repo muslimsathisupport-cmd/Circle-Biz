@@ -43,6 +43,7 @@ data class Transaction(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WalletScreen() {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -59,7 +60,7 @@ fun WalletScreen() {
     var transactions by remember { mutableStateOf<List<Transaction>>(emptyList()) }
     var isLoadingTransactions by remember { mutableStateOf(true) }
 
-    val currentUserUid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+    val currentUserUid = UserSession.getUid(context)
 
     // Listen to user stats
     DisposableEffect(currentUserUid) {
@@ -700,7 +701,7 @@ fun DepositDialog(onDismiss: () -> Unit, onSubmitted: (Double, String) -> Unit) 
                             val reqAmount = amount.toDoubleOrNull() ?: 0.0
                             if (reqAmount > 0 && transactionId.isNotBlank()) {
                                 isSubmitting = true
-                                val currentUserUid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+                                val currentUserUid = UserSession.getUid(context)
                                 val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
                                 val depositDoc = db.collection("deposits").document()
                                 val depositId = depositDoc.id
@@ -751,6 +752,7 @@ fun DepositDialog(onDismiss: () -> Unit, onSubmitted: (Double, String) -> Unit) 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WithdrawDialog(availableBalance: Double, onDismiss: () -> Unit, onSubmitted: (Double, String) -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     var amount by remember { mutableStateOf("") }
     var accountNo by remember { mutableStateOf("") }
     var selectedMethod by remember { mutableStateOf("bKash") }
@@ -918,7 +920,7 @@ fun WithdrawDialog(availableBalance: Double, onDismiss: () -> Unit, onSubmitted:
                             val reqAmount = amount.toDoubleOrNull() ?: 0.0
                             if (reqAmount >= minWithdrawLimit && reqAmount <= availableBalance && accountNo.isNotBlank()) {
                                 isSubmitting = true
-                                val currentUserUid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+                                val currentUserUid = UserSession.getUid(context)
                                 val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
                                 val withdrawDoc = db.collection("withdrawals").document()
                                 val withdrawId = withdrawDoc.id
@@ -944,14 +946,31 @@ fun WithdrawDialog(availableBalance: Double, onDismiss: () -> Unit, onSubmitted:
                                     "isRead" to false,
                                     "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp()
                                 )
-                                db.runBatch { batch ->
-                                    batch.set(withdrawDoc, withdrawData)
-                                    batch.set(notificationDoc, notificationData)
+                                db.runTransaction { transaction ->
+                                    val userRef = db.collection("users").document(currentUserUid)
+                                    val userSnap = transaction.get(userRef)
+                                    val currentBalance = when (val bal = userSnap.get("balance")) {
+                                        is Number -> bal.toDouble()
+                                        is String -> bal.toDoubleOrNull() ?: 0.0
+                                        else -> 0.0
+                                    }
+
+                                    if (currentBalance >= reqAmount) {
+                                        transaction.update(userRef, "balance", currentBalance - reqAmount)
+                                        val newWithdrawData = withdrawData.toMutableMap()
+                                        newWithdrawData["amount_deducted"] = true
+                                        transaction.set(withdrawDoc, newWithdrawData)
+                                        transaction.set(notificationDoc, notificationData)
+                                    } else {
+                                        throw Exception("Insufficient balance")
+                                    }
                                 }.addOnCompleteListener { task ->
                                     isSubmitting = false
                                     if (task.isSuccessful) {
                                         onSubmitted(reqAmount, selectedMethod)
                                         onDismiss()
+                                    } else {
+                                        errorText = task.exception?.localizedMessage ?: "Transaction failed"
                                     }
                                 }
                             }

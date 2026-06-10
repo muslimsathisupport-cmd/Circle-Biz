@@ -34,25 +34,56 @@ fun ReferAndEarnScreen(onBack: () -> Unit) {
     val clipboardManager = LocalClipboardManager.current
     val db = FirebaseFirestore.getInstance()
     
-    val userId = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+    val userId = UserSession.getUid(context)
     var referralCode by remember { mutableStateOf("") }
     var rewardAmount by remember { mutableStateOf(10.0) }
     var isEnabled by remember { mutableStateOf(true) }
 
-    LaunchedEffect(userId) {
-        if (userId.isNotEmpty()) {
+    DisposableEffect(userId) {
+        if (userId.isEmpty()) {
+            onDispose {}
+        } else {
             db.collection("users").document(userId).get().addOnSuccessListener { doc ->
-                referralCode = doc.getString("referCode") ?: userId.take(8).uppercase()
+                referralCode = doc.getString("referCode") ?: doc.getString("myReferralCode") ?: userId.take(8).uppercase()
             }
-            db.collection("settings").document("referral").addSnapshotListener { snapshot, error ->
-                if (snapshot != null && snapshot.exists()) {
-                    rewardAmount = when (val v = snapshot.get("bonus_amount")) {
-                        is Number -> v.toDouble()
-                        is String -> v.toDoubleOrNull() ?: 10.0
-                        else -> 10.0
+            
+            fun parseReferralAmount(snapshot: com.google.firebase.firestore.DocumentSnapshot?): Double? {
+                if (snapshot == null || !snapshot.exists()) return null
+                val possibleKeys = listOf("bonus_amount", "refer_reward", "reward_amount")
+                for (key in possibleKeys) {
+                    val value = snapshot.get(key)
+                    if (value is Number) return value.toDouble()
+                    if (value is String) {
+                        val d = value.toDoubleOrNull()
+                        if (d != null) return d
                     }
-                    isEnabled = snapshot.getBoolean("is_enabled") ?: true
                 }
+                return null
+            }
+            
+            val listener1 = db.collection("settings").document("referral").addSnapshotListener { snapshot, error ->
+                if (snapshot != null && snapshot.exists()) {
+                    val amt = parseReferralAmount(snapshot)
+                    if (amt != null) {
+                        rewardAmount = amt
+                    }
+                    isEnabled = snapshot.getBoolean("is_enabled") ?: snapshot.getBoolean("enabled") ?: isEnabled
+                }
+            }
+            
+            val listener2 = db.collection("settings").document("refer_settings").addSnapshotListener { snapshot, error ->
+                if (snapshot != null && snapshot.exists()) {
+                    val amt = parseReferralAmount(snapshot)
+                    if (amt != null) {
+                        rewardAmount = amt
+                    }
+                    isEnabled = snapshot.getBoolean("is_enabled") ?: snapshot.getBoolean("enabled") ?: isEnabled
+                }
+            }
+            
+            onDispose {
+                listener1.remove()
+                listener2.remove()
             }
         }
     }

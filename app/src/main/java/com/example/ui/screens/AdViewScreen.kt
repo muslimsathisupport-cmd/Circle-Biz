@@ -47,7 +47,7 @@ fun AdViewScreen(task: EarningTask, onBack: () -> Unit) {
     var isLoadingSettings by remember { mutableStateOf(true) }
     var isSubmittingTransaction by remember { mutableStateOf(false) }
 
-    val currentUserUid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+    val currentUserUid = UserSession.getUid(context)
 
     // Listen to Ad View settings in real-time independently of user authentication timing
     LaunchedEffect(Unit) {

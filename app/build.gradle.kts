@@ -13,7 +13,7 @@ android {
 
   defaultConfig {
     applicationId = "com.circlebiz"
-    minSdk = 24
+    minSdk = 23
     targetSdk = 33
     versionCode = 13
     versionName = "1.0.13"

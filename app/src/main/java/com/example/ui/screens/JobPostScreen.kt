@@ -28,6 +28,7 @@ import androidx.compose.foundation.lazy.items
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun JobPostScreen(onBack: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var link by remember { mutableStateOf("") }
@@ -42,7 +43,7 @@ fun JobPostScreen(onBack: () -> Unit) {
     var depositedBalance by remember { mutableStateOf(0.0) }
     var isLoadingUser by remember { mutableStateOf(true) }
     var isSubmitting by remember { mutableStateOf(false) }
-    val currentUserUid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+    val currentUserUid = UserSession.getUid(context)
 
     DisposableEffect(currentUserUid) {
         if (currentUserUid.isBlank()) {
@@ -308,9 +309,10 @@ fun JobPostScreen(onBack: () -> Unit) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun JobPostHistoryDialog(onDismiss: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     var historyList by remember { mutableStateOf<List<Map<String, Any>>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
-    val currentUserUid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+    val currentUserUid = UserSession.getUid(context)
 
     LaunchedEffect(currentUserUid) {
         if (currentUserUid.isNotBlank()) {

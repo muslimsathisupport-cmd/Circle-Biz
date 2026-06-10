@@ -202,7 +202,7 @@ fun QuizScreen(onBack: () -> Unit) {
     var isLoadingSettings by remember { mutableStateOf(true) }
 
     val coroutineScope = rememberCoroutineScope()
-    val currentUserUid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+    val currentUserUid = UserSession.getUid(context)
 
     // Listen to quiz settings in real-time independently of user authentication timing
     LaunchedEffect(Unit) {

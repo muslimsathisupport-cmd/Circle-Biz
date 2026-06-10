@@ -121,7 +121,8 @@ fun HomeScreen() {
     var firebaseBanners by remember { mutableStateOf<List<Banner>>(emptyList()) }
     var dailyCheckInEnabled by remember { mutableStateOf(true) }
     
-    val currentUserUid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val currentUserUid = UserSession.getUid(context)
 
     androidx.compose.runtime.DisposableEffect(currentUserUid) {
         if (currentUserUid.isBlank()) {
@@ -149,7 +150,14 @@ fun HomeScreen() {
             val checkInListener = db.collection("settings").document("daily_checkin")
                 .addSnapshotListener { snapshot, error ->
                     if (snapshot != null && snapshot.exists()) {
-                        dailyCheckInEnabled = snapshot.getBoolean("is_enabled") ?: true
+                        dailyCheckInEnabled = snapshot.getBoolean("is_enabled") ?: snapshot.getBoolean("enabled") ?: dailyCheckInEnabled
+                    }
+                }
+
+            val checkInListener2 = db.collection("settings").document("checkin_settings")
+                .addSnapshotListener { snapshot, error ->
+                    if (snapshot != null && snapshot.exists()) {
+                        dailyCheckInEnabled = snapshot.getBoolean("is_enabled") ?: snapshot.getBoolean("enabled") ?: dailyCheckInEnabled
                     }
                 }
                 
@@ -157,6 +165,7 @@ fun HomeScreen() {
                 notifListener.remove()
                 bannerListener.remove()
                 checkInListener.remove()
+                checkInListener2.remove()
             }
         }
     }

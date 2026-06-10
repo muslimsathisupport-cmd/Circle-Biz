@@ -66,6 +66,7 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SellTaskScreen(task: EarningTask, onBack: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     var accountInput by remember { mutableStateOf("") }
     var passwordInput by remember { mutableStateOf("") }
     var profileLinkInput by remember { mutableStateOf("") }
@@ -382,7 +383,7 @@ fun SellTaskScreen(task: EarningTask, onBack: () -> Unit) {
                         Button(
                             onClick = {
                                 if (isFormValid) {
-                                    val currentUserUid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+                                    val currentUserUid = UserSession.getUid(context)
                                     if (currentUserUid.isNotBlank()) {
                                         val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
                                         
@@ -491,7 +492,8 @@ data class SubmissionHistoryItem(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SubmissionHistoryDialog(onDismiss: () -> Unit, taskName: String, categoryCollection: String) {
-    val currentUserUid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val currentUserUid = UserSession.getUid(context)
     var submissionHistory by remember { mutableStateOf<List<SubmissionHistoryItem>>(emptyList()) }
     var isLoadingHistory by remember { mutableStateOf(true) }
 

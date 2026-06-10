@@ -44,7 +44,7 @@ fun TypingJobScreen(onBack: () -> Unit) {
     var isSubmittingTransaction by remember { mutableStateOf(false) }
 
     val coroutineScope = rememberCoroutineScope()
-    val currentUserUid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+    val currentUserUid = UserSession.getUid(context)
 
     // Listen to typing configurations in real-time independently of user authentication timing
     LaunchedEffect(Unit) {

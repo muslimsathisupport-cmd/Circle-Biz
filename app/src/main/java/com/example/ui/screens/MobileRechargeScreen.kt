@@ -55,6 +55,7 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MobileRechargeScreen(onBack: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     var phoneNumber by remember { mutableStateOf("") }
     var amount by remember { mutableStateOf("") }
     var selectedProvider by remember { mutableStateOf("") }
@@ -221,7 +222,7 @@ fun MobileRechargeScreen(onBack: () -> Unit) {
                                     if (phoneNumber.length >= 10 && amtValue > 0 && selectedProvider.isNotBlank()) {
                                         isSubmitting = true
                                         val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
-                                        val currentUserUid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+                                        val currentUserUid = UserSession.getUid(context)
                                         
                                         val rechargeData = hashMapOf(
                                             "userId" to currentUserUid,
@@ -275,7 +276,7 @@ fun MobileRechargeScreen(onBack: () -> Unit) {
                 Surface(modifier = Modifier.fillMaxSize(), color = Color.White) {
                     var historyList by remember { mutableStateOf<List<Map<String, Any>>>(emptyList()) }
                     var isLoadingHistory by remember { mutableStateOf(true) }
-                    val currentUserUid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+                    val currentUserUid = UserSession.getUid(context)
 
                     androidx.compose.runtime.DisposableEffect(currentUserUid) {
                         if (currentUserUid.isNotBlank()) {

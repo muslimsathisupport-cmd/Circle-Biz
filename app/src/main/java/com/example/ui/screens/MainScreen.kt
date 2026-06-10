@@ -313,7 +313,31 @@ fun ProfileScreen(onLogout: () -> Unit) {
                             else -> when (val v2 = snapshot.get("reward_amount")) {
                                 is Number -> v2.toDouble()
                                 is String -> v2.toDoubleOrNull() ?: 2.0
-                                else -> 2.0
+                                else -> when (val v3 = snapshot.get("amount")) {
+                                    is Number -> v3.toDouble()
+                                    is String -> v3.toDoubleOrNull() ?: 2.0
+                                    else -> 2.0
+                                }
+                            }
+                        }
+                        dailyRewardAmount = reward
+                    }
+                }
+
+            db.collection("settings").document("daily_checkin")
+                .addSnapshotListener { snapshot, error ->
+                    if (snapshot != null && snapshot.exists()) {
+                        val reward = when (val value = snapshot.get("amount")) {
+                            is Number -> value.toDouble()
+                            is String -> value.toDoubleOrNull() ?: 2.0
+                            else -> when (val v2 = snapshot.get("reward_amount")) {
+                                is Number -> v2.toDouble()
+                                is String -> v2.toDoubleOrNull() ?: 2.0
+                                else -> when (val v3 = snapshot.get("checkin_reward")) {
+                                    is Number -> v3.toDouble()
+                                    is String -> v3.toDoubleOrNull() ?: 2.0
+                                    else -> 2.0
+                                }
                             }
                         }
                         dailyRewardAmount = reward
@@ -321,16 +345,228 @@ fun ProfileScreen(onLogout: () -> Unit) {
                 }
 
             // 3. Listen to dynamic referral settings
+            db.collection("settings").document("refer_settings")
+                .addSnapshotListener { snapshot, error ->
+                    if (snapshot != null && snapshot.exists()) {
+                        val reward = when (val value = snapshot.get("refer_reward")) {
+                            is Number -> value.toDouble()
+                            is String -> value.toDoubleOrNull() ?: 10.0
+                            else -> when (val v2 = snapshot.get("reward_amount")) {
+                                is Number -> v2.toDouble()
+                                is String -> v2.toDoubleOrNull() ?: 10.0
+                                else -> when (val v3 = snapshot.get("bonus_amount")) {
+                                    is Number -> v3.toDouble()
+                                    is String -> v3.toDoubleOrNull() ?: 10.0
+                                    else -> 10.0
+                                }
+                            }
+                        }
+                        referRewardAmount = reward
+                        isReferEnabled = snapshot.getBoolean("is_enabled") ?: snapshot.getBoolean("enabled") ?: isReferEnabled
+                    }
+                }
+
             db.collection("settings").document("referral")
                 .addSnapshotListener { snapshot, error ->
                     if (snapshot != null && snapshot.exists()) {
                         val reward = when (val value = snapshot.get("bonus_amount")) {
                             is Number -> value.toDouble()
                             is String -> value.toDoubleOrNull() ?: 10.0
-                            else -> 10.0
+                            else -> when (val v2 = snapshot.get("reward_amount")) {
+                                is Number -> v2.toDouble()
+                                is String -> v2.toDoubleOrNull() ?: 10.0
+                                else -> when (val v3 = snapshot.get("refer_reward")) {
+                                    is Number -> v3.toDouble()
+                                    is String -> v3.toDoubleOrNull() ?: 10.0
+                                    else -> 10.0
+                                }
+                            }
                         }
                         referRewardAmount = reward
-                        isReferEnabled = snapshot.getBoolean("is_enabled") ?: true
+                        isReferEnabled = snapshot.getBoolean("is_enabled") ?: snapshot.getBoolean("enabled") ?: isReferEnabled
+                    }
+                }
+
+            // 4. Automatic Balance Adjustment for approved deposits and rejected/approved withdrawals
+            // This register handles automatic adjustments of the wallet balance and generates in-app notifications.
+            
+            // Handle Approved Deposits
+            db.collection("deposits")
+                .whereEqualTo("userId", currentUserUid)
+                .whereEqualTo("status", "approved")
+                .addSnapshotListener { snapshot, _ ->
+                    snapshot?.documents?.forEach { doc ->
+                        if (doc.getBoolean("processed_for_balance") != true) {
+                            val amount = when (val v = doc.get("amount")) {
+                                is Number -> v.toDouble()
+                                is String -> v.toDoubleOrNull() ?: 0.0
+                                else -> 0.0
+                            }
+                            if (amount > 0) {
+                                db.runTransaction { tx ->
+                                    val userRef = db.collection("users").document(currentUserUid)
+                                    val userSnap = tx.get(userRef)
+                                    val currentBal = when (val bal = userSnap.get("balance")) {
+                                        is Number -> bal.toDouble()
+                                        is String -> bal.toDoubleOrNull() ?: 0.0
+                                        else -> 0.0
+                                    }
+                                    tx.update(userRef, "balance", currentBal + amount)
+                                    tx.update(doc.reference, "processed_for_balance", true)
+                                    tx.update(doc.reference, "claimed_at", com.google.firebase.firestore.FieldValue.serverTimestamp())
+                                    
+                                    val newNotifRef = db.collection("notifications").document()
+                                    val notifMap = hashMapOf(
+                                        "id" to newNotifRef.id,
+                                        "userId" to currentUserUid,
+                                        "title" to "ডিপোজিট অ্যাপ্রুভ হয়েছে! ✅",
+                                        "message" to "আপনার ৳$amount ডিপোজিট রিকোয়েস্ট অ্যাপ্রুভ করা হয়েছে এবং ব্যালেন্স আপনার অ্যাকাউন্টে যোগ করা হয়েছে।",
+                                        "timestamp" to System.currentTimeMillis(),
+                                        "isRead" to false,
+                                        "type" to "SUCCESS"
+                                    )
+                                    tx.set(newNotifRef, notifMap)
+                                }.addOnFailureListener { err ->
+                                    val userRef = db.collection("users").document(currentUserUid)
+                                    userRef.get().addOnSuccessListener { userSnap ->
+                                        val currentBal = when (val bal = userSnap.get("balance")) {
+                                            is Number -> bal.toDouble()
+                                            is String -> bal.toDoubleOrNull() ?: 0.0
+                                            else -> 0.0
+                                        }
+                                        userRef.update("balance", currentBal + amount).addOnSuccessListener {
+                                            doc.reference.update(
+                                                "processed_for_balance", true,
+                                                "claimed_at", com.google.firebase.firestore.FieldValue.serverTimestamp()
+                                            )
+                                            val newNotifRef = db.collection("notifications").document()
+                                            val notifMap = hashMapOf(
+                                                "id" to newNotifRef.id,
+                                                "userId" to currentUserUid,
+                                                "title" to "ডিপোজিট অ্যাপ্রুভ হয়েছে! ✅",
+                                                "message" to "আপনার ৳$amount ডিপোজিট রিকোয়েস্ট অ্যাপ্রুভ করা হয়েছে এবং ব্যালেন্স আপনার অ্যাকাউন্টে যোগ করা হয়েছে।",
+                                                "timestamp" to System.currentTimeMillis(),
+                                                "isRead" to false,
+                                                "type" to "SUCCESS"
+                                            )
+                                            newNotifRef.set(notifMap)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+            // Handle Rejected Withdrawals (Return funds and notify)
+            db.collection("withdrawals")
+                .whereEqualTo("userId", currentUserUid)
+                .whereEqualTo("status", "rejected")
+                .addSnapshotListener { snapshot, _ ->
+                    snapshot?.documents?.forEach { doc ->
+                        if (doc.getBoolean("amount_deducted") == true && doc.getBoolean("processed_for_balance") != true) {
+                            val amount = when (val v = doc.get("amount")) {
+                                is Number -> v.toDouble()
+                                is String -> v.toDoubleOrNull() ?: 0.0
+                                else -> 0.0
+                            }
+                            if (amount > 0) {
+                                db.runTransaction { tx ->
+                                    val userRef = db.collection("users").document(currentUserUid)
+                                    val userSnap = tx.get(userRef)
+                                    val currentBal = when (val bal = userSnap.get("balance")) {
+                                        is Number -> bal.toDouble()
+                                        is String -> bal.toDoubleOrNull() ?: 0.0
+                                        else -> 0.0
+                                    }
+                                    tx.update(userRef, "balance", currentBal + amount)
+                                    tx.update(doc.reference, "processed_for_balance", true)
+                                    tx.update(doc.reference, "claimed_at", com.google.firebase.firestore.FieldValue.serverTimestamp())
+                                    
+                                    val newNotifRef = db.collection("notifications").document()
+                                    val notifMap = hashMapOf(
+                                        "id" to newNotifRef.id,
+                                        "userId" to currentUserUid,
+                                        "title" to "উইথড্র রিকোয়েস্ট বাতিল হয়েছে! ❌",
+                                        "message" to "আপনার ৳$amount উইথড্র রিকোয়েস্টটি বাতিল করা হয়েছে এবং টাকা আপনার ব্যালেন্সে ফেরত দেওয়া হয়েছে।",
+                                        "timestamp" to System.currentTimeMillis(),
+                                        "isRead" to false,
+                                        "type" to "ERROR"
+                                    )
+                                    tx.set(newNotifRef, notifMap)
+                                }.addOnFailureListener { err ->
+                                    val userRef = db.collection("users").document(currentUserUid)
+                                    userRef.get().addOnSuccessListener { userSnap ->
+                                        val currentBal = when (val bal = userSnap.get("balance")) {
+                                            is Number -> bal.toDouble()
+                                            is String -> bal.toDoubleOrNull() ?: 0.0
+                                            else -> 0.0
+                                        }
+                                        userRef.update("balance", currentBal + amount).addOnSuccessListener {
+                                            doc.reference.update(
+                                                "processed_for_balance", true,
+                                                "claimed_at", com.google.firebase.firestore.FieldValue.serverTimestamp()
+                                            )
+                                            val newNotifRef = db.collection("notifications").document()
+                                            val notifMap = hashMapOf(
+                                                "id" to newNotifRef.id,
+                                                "userId" to currentUserUid,
+                                                "title" to "উইথড্র রিকোয়েস্ট বাতিল হয়েছে! ❌",
+                                                "message" to "আপনার ৳$amount উইথড্র রিকোয়েস্টটি বাতিল করা হয়েছে এবং টাকা আপনার ব্যালেন্সে ফেরত দেওয়া হয়েছে।",
+                                                "timestamp" to System.currentTimeMillis(),
+                                                "isRead" to false,
+                                                "type" to "ERROR"
+                                            )
+                                            newNotifRef.set(notifMap)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+            // Handle Approved Withdrawals (Generate approval notification for user)
+            db.collection("withdrawals")
+                .whereEqualTo("userId", currentUserUid)
+                .whereEqualTo("status", "approved")
+                .addSnapshotListener { snapshot, _ ->
+                    snapshot?.documents?.forEach { doc ->
+                        if (doc.getBoolean("processed_for_approval_notification") != true) {
+                            val amount = when (val v = doc.get("amount")) {
+                                is Number -> v.toDouble()
+                                is String -> v.toDoubleOrNull() ?: 0.0
+                                else -> 0.0
+                            }
+                            db.runTransaction { tx ->
+                                tx.update(doc.reference, "processed_for_approval_notification", true)
+                                val newNotifRef = db.collection("notifications").document()
+                                val notifMap = hashMapOf(
+                                    "id" to newNotifRef.id,
+                                    "userId" to currentUserUid,
+                                    "title" to "উইথড্র সফল হয়েছে! 🎁",
+                                    "message" to "আপনার ৳$amount উইথড্র রিকোয়েস্টটি সফলভাবে সম্পন্ন হয়েছে।",
+                                    "timestamp" to System.currentTimeMillis(),
+                                    "isRead" to false,
+                                    "type" to "SUCCESS"
+                                )
+                                tx.set(newNotifRef, notifMap)
+                            }.addOnFailureListener {
+                                doc.reference.update("processed_for_approval_notification", true).addOnSuccessListener {
+                                    val newNotifRef = db.collection("notifications").document()
+                                    val notifMap = hashMapOf(
+                                        "id" to newNotifRef.id,
+                                        "userId" to currentUserUid,
+                                        "title" to "উইথড্র সফল হয়েছে! 🎁",
+                                        "message" to "আপনার ৳$amount উইথড্র রিকোয়েস্টটি সফলভাবে সম্পন্ন হয়েছে।",
+                                        "timestamp" to System.currentTimeMillis(),
+                                        "isRead" to false,
+                                        "type" to "SUCCESS"
+                                    )
+                                    newNotifRef.set(notifMap)
+                                }
+                            }
+                        }
                     }
                 }
         } else {

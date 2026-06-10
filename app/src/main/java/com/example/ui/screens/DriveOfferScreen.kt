@@ -35,6 +35,7 @@ data class DriveOffer(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DriveOfferScreen(onBack: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     var showHistory by remember { mutableStateOf(false) }
     var selectedOffer by remember { mutableStateOf<DriveOffer?>(null) }
     
@@ -97,7 +98,7 @@ fun DriveOfferScreen(onBack: () -> Unit) {
                     val offerToOrder = selectedOffer!!
                     selectedOffer = null
                     
-                    val currentUserUid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+                    val currentUserUid = UserSession.getUid(context)
                     val orderData = hashMapOf(
                         "userId" to currentUserUid,
                         "offerId" to offerToOrder.id,
@@ -245,9 +246,10 @@ fun OrderDriveOfferDialog(offer: DriveOffer, onDismiss: () -> Unit, onSubmit: (S
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DriveHistoryDialog(onDismiss: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     var historyList by remember { mutableStateOf<List<Map<String, Any>>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
-    val currentUserUid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+    val currentUserUid = UserSession.getUid(context)
 
     DisposableEffect(currentUserUid) {
         if (currentUserUid.isNotBlank()) {

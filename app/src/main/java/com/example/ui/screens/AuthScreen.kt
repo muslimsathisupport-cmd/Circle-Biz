@@ -363,20 +363,71 @@ fun SignUpScreen(onNavigateToLogin: () -> Unit, onSignUpSuccess: () -> Unit) {
                                             if (dbTask.isSuccessful) {
                                                 // If there's a referrer, apply the referral bonus dynamically
                                                 if (referrerUid != null) {
-                                                    db.collection("settings").document("referral").get()
+                                                    // Fallback check
+                                                    db.collection("settings").document("refer_settings").get()
                                                         .addOnCompleteListener { settingTask ->
-                                                            var bonusAmount = 10.0 // Default 10 Taka
+                                                            var bonusAmount = 10.0
                                                             var isReferEnabled = true
-                                                            if (settingTask.isSuccessful && settingTask.result.exists()) {
-                                                                bonusAmount = when (val value = settingTask.result.get("bonus_amount")) {
+                                                            var launchedThread = false
+                                                            if (settingTask.isSuccessful && settingTask.result != null && settingTask.result.exists()) {
+                                                                bonusAmount = when (val value = settingTask.result.get("refer_reward")) {
                                                                     is Number -> value.toDouble()
                                                                     is String -> value.toDoubleOrNull() ?: 10.0
-                                                                    else -> 10.0
+                                                                    else -> when (val v2 = settingTask.result.get("reward_amount")) {
+                                                                        is Number -> v2.toDouble()
+                                                                        is String -> v2.toDoubleOrNull() ?: 10.0
+                                                                        else -> 10.0
+                                                                    }
                                                                 }
                                                                 isReferEnabled = settingTask.result.getBoolean("is_enabled") ?: true
+                                                            } else {
+                                                                launchedThread = true
+                                                                Thread {
+                                                                    var fallbackBonusAmount = 10.0
+                                                                    var fallbackIsReferEnabled = true
+                                                                    try {
+                                                                        val fallbackTask = com.google.android.gms.tasks.Tasks.await(db.collection("settings").document("referral").get())
+                                                                        if (fallbackTask != null && fallbackTask.exists()) {
+                                                                            fallbackBonusAmount = when (val value = fallbackTask.get("bonus_amount")) {
+                                                                                is Number -> value.toDouble()
+                                                                                is String -> value.toDoubleOrNull() ?: 10.0
+                                                                                else -> when (val v2 = fallbackTask.get("reward_amount")) {
+                                                                                    is Number -> v2.toDouble()
+                                                                                    is String -> v2.toDoubleOrNull() ?: 10.0
+                                                                                    else -> 10.0
+                                                                                }
+                                                                            }
+                                                                            fallbackIsReferEnabled = fallbackTask.getBoolean("is_enabled") ?: true
+                                                                        }
+                                                                    } catch (e: Exception) {
+                                                                        // Ignore error, fallback to default 10 Taka
+                                                                    }
+                                                                    
+                                                                    if (fallbackIsReferEnabled) {
+                                                                        val referrerRef = db.collection("users").document(referrerUid)
+                                                                        db.runTransaction { tx ->
+                                                                            val refSnap = tx.get(referrerRef)
+                                                                            val currentRefBalance = when (val bal = refSnap.get("balance")) {
+                                                                                is Number -> bal.toDouble()
+                                                                                is String -> bal.toDoubleOrNull() ?: 0.0
+                                                                                else -> 0.0
+                                                                            }
+                                                                            tx.update(referrerRef, "balance", currentRefBalance + fallbackBonusAmount)
+                                                                        }.addOnCompleteListener { txTask ->
+                                                                            val notifRef = db.collection("notifications").document()
+                                                                            val notifMap = hashMapOf(
+                                                                                "title" to "রেফার বোনাস যোগ হয়েছে! 🎁",
+                                                                                "message" to "আপনার রেফার কোড ব্যবহার করে $trimmedFirstName অ্যাকাউন্ট খোলার জন্য আপনি ৳$fallbackBonusAmount বোনাস পেয়েছেন।",
+                                                                                "timestamp" to System.currentTimeMillis(),
+                                                                                "userId" to referrerUid
+                                                                            )
+                                                                            notifRef.set(notifMap)
+                                                                        }
+                                                                    }
+                                                                }.start()
                                                             }
                                                             
-                                                            if (isReferEnabled) {
+                                                            if (!launchedThread && isReferEnabled) {
                                                                 // Credit the referrer
                                                                 val referrerRef = db.collection("users").document(referrerUid)
                                                                 db.runTransaction { tx ->
@@ -411,84 +462,9 @@ fun SignUpScreen(onNavigateToLogin: () -> Unit, onSignUpSuccess: () -> Unit) {
                                             }
                                         }
                                 } else {
-                                    // Fallback: try checking if already registered or register locally via anonymous/custom UID
-                                    db.collection("users")
-                                        .whereEqualTo("mobile", trimmedMobile)
-                                        .get()
-                                        .addOnCompleteListener { searchTask ->
-                                            if (searchTask.isSuccessful && !searchTask.result.isEmpty) {
-                                                isLoading = false
-                                                Toast.makeText(context, "Mobile number already registered!", Toast.LENGTH_LONG).show()
-                                            } else {
-                                                // Register using anonymous auth or generate a unique ID
-                                                auth.signInAnonymously().addOnCompleteListener { anonTask ->
-                                                    val finalUid = if (anonTask.isSuccessful) {
-                                                        anonTask.result?.user?.uid ?: java.util.UUID.randomUUID().toString()
-                                                    } else {
-                                                        java.util.UUID.randomUUID().toString()
-                                                    }
-                                                    val generatedMyReferral = (1..8).map { "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".random() }.joinToString("")
-                                                    val userMap = hashMapOf(
-                                                        "firstName" to trimmedFirstName,
-                                                        "lastName" to trimmedLastName,
-                                                        "mobile" to trimmedMobile,
-                                                        "password" to trimmedPassword,
-                                                        "referralCode" to enteredReferral,
-                                                        "myReferralCode" to generatedMyReferral,
-                                                        "balance" to 0.0
-                                                    )
-                                                    db.collection("users").document(finalUid).set(userMap)
-                                                        .addOnCompleteListener { saveTask ->
-                                                            if (saveTask.isSuccessful) {
-                                                                if (referrerUid != null) {
-                                                                    db.collection("settings").document("referral").get()
-                                                                        .addOnCompleteListener { settingTask ->
-                                                                            var bonusAmount = 10.0
-                                                                            var isReferEnabled = true
-                                                                            if (settingTask.isSuccessful && settingTask.result.exists()) {
-                                                                                bonusAmount = when (val value = settingTask.result.get("bonus_amount")) {
-                                                                                    is Number -> value.toDouble()
-                                                                                    is String -> value.toDoubleOrNull() ?: 10.0
-                                                                                    else -> 10.0
-                                                                                }
-                                                                                isReferEnabled = settingTask.result.getBoolean("is_enabled") ?: true
-                                                                            }
-                                                                            
-                                                                            if (isReferEnabled) {
-                                                                                val referrerRef = db.collection("users").document(referrerUid)
-                                                                                db.runTransaction { tx ->
-                                                                                    val refSnap = tx.get(referrerRef)
-                                                                                    val currentRefBalance = when (val bal = refSnap.get("balance")) {
-                                                                                        is Number -> bal.toDouble()
-                                                                                        is String -> bal.toDoubleOrNull() ?: 0.0
-                                                                                        else -> 0.0
-                                                                                    }
-                                                                                    tx.update(referrerRef, "balance", currentRefBalance + bonusAmount)
-                                                                                }.addOnCompleteListener { txTask ->
-                                                                                    val notifRef = db.collection("notifications").document()
-                                                                                    val notifMap = hashMapOf(
-                                                                                        "title" to "রেফার বোনাস যোগ হয়েছে! 🎁",
-                                                                                        "message" to "আপনার রেফার কোড ব্যবহার করে $trimmedFirstName অ্যাকাউন্ট খোলার জন্য আপনি ৳$bonusAmount বোনাস পেয়েছেন।",
-                                                                                        "timestamp" to System.currentTimeMillis(),
-                                                                                        "userId" to referrerUid
-                                                                                    )
-                                                                                    notifRef.set(notifMap)
-                                                                                }
-                                                                            }
-                                                                        }
-                                                                }
-                                                                UserSession.saveSession(context, finalUid)
-                                                                isLoading = false
-                                                                Toast.makeText(context, "Sign up successful!", Toast.LENGTH_SHORT).show()
-                                                                onSignUpSuccess()
-                                                            } else {
-                                                                isLoading = false
-                                                                Toast.makeText(context, "Sign up failed: ${saveTask.exception?.localizedMessage ?: "Unknown error"}", Toast.LENGTH_LONG).show()
-                                                            }
-                                                        }
-                                                }
-                                            }
-                                        }
+                                    // Fallback: SIGN IN EXISTING USER OR ERROR
+                                    isLoading = false
+                                    Toast.makeText(context, "Registration failed: ${task.exception?.localizedMessage}", Toast.LENGTH_LONG).show()
                                 }
                             }
                     }

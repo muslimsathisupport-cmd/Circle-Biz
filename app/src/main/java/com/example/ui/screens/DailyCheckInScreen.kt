@@ -31,8 +31,7 @@ import java.util.*
 fun DailyCheckInScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val db = FirebaseFirestore.getInstance()
-    val auth = FirebaseAuth.getInstance()
-    val userId = auth.currentUser?.uid ?: ""
+    val userId = UserSession.getUid(context)
 
     var amount by remember { mutableStateOf(0.0) }
     var isEnabled by remember { mutableStateOf(true) }
@@ -43,30 +42,56 @@ fun DailyCheckInScreen(onBack: () -> Unit) {
 
     val todayDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
 
-    LaunchedEffect(userId) {
-        if (userId.isNotEmpty()) {
-            // Fetch settings
-            db.collection("settings").document("daily_checkin")
-                .get()
-                .addOnSuccessListener { document ->
-                    if (document.exists()) {
-                        amount = when (val v = document.get("amount")) {
-                            is Number -> v.toDouble()
-                            is String -> v.toDoubleOrNull() ?: 0.0
-                            else -> 0.0
-                        }
-                        isEnabled = document.getBoolean("is_enabled") ?: true
+    DisposableEffect(userId) {
+        if (userId.isEmpty()) {
+            onDispose {}
+        } else {
+            fun parseAmount(snapshot: com.google.firebase.firestore.DocumentSnapshot?): Double? {
+                if (snapshot == null || !snapshot.exists()) return null
+                val possibleKeys = listOf("amount", "checkin_reward", "reward_amount", "bonus_amount")
+                for (key in possibleKeys) {
+                    val value = snapshot.get(key)
+                    if (value is Number) return value.toDouble()
+                    if (value is String) {
+                        val d = value.toDoubleOrNull()
+                        if (d != null) return d
                     }
                 }
+                return null
+            }
+
+            val listener1 = db.collection("settings").document("daily_checkin").addSnapshotListener { snapshot, error ->
+                if (snapshot != null && snapshot.exists()) {
+                    val amt = parseAmount(snapshot)
+                    if (amt != null) {
+                        amount = amt
+                    }
+                    isEnabled = snapshot.getBoolean("is_enabled") ?: snapshot.getBoolean("enabled") ?: isEnabled
+                }
+            }
+
+            val listener2 = db.collection("settings").document("checkin_settings").addSnapshotListener { snapshot, error ->
+                if (snapshot != null && snapshot.exists()) {
+                    val amt = parseAmount(snapshot)
+                    if (amt != null) {
+                        amount = amt
+                    }
+                    isEnabled = snapshot.getBoolean("is_enabled") ?: snapshot.getBoolean("enabled") ?: isEnabled
+                }
+            }
 
             // Fetch user profile for last check-in date
-            db.collection("users").document(userId)
-                .get()
-                .addOnSuccessListener { document ->
-                    if (document.exists()) {
-                        lastCheckInDate = document.getString("last_checkin_date") ?: ""
-                    }
+            val userListener = db.collection("users").document(userId).addSnapshotListener { snapshot, error ->
+                if (snapshot != null && snapshot.exists()) {
+                    lastCheckInDate = snapshot.getString("last_checkin_date") ?: ""
                 }
+            }
+
+            onDispose {
+                listener1.remove()
+                listener2.remove()
+                userListener.remove()
+            }
         }
     }
 
