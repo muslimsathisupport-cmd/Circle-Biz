@@ -197,7 +197,7 @@ fun ProfileListItem(
     androidx.compose.material3.Surface(
         onClick = onClick,
         color = Color(0xFFF5F5F5).copy(alpha = 0.5f),
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(16.dp),
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp)
@@ -609,7 +609,17 @@ fun ProfileScreen(onLogout: () -> Unit) {
     var showReferEarnDialog by remember { mutableStateOf(false) }
 
     if (showDailyCheckInFullScreen) {
-        DailyCheckInScreen(onBack = { showDailyCheckInFullScreen = false })
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { showDailyCheckInFullScreen = false },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            androidx.compose.material3.Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = androidx.compose.material3.MaterialTheme.colorScheme.background
+            ) {
+                DailyCheckInScreen(onBack = { showDailyCheckInFullScreen = false })
+            }
+        }
     }
 
     if (showSettings) {
@@ -754,14 +764,14 @@ fun ProfileScreen(onLogout: () -> Unit) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(140.dp),
+                    .height(110.dp),
                 contentAlignment = Alignment.BottomCenter
             ) {
                 // Curved top banner matching the screenshot
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(100.dp)
+                        .height(70.dp)
                         .align(Alignment.TopCenter)
                         .background(
                             color = Color(0xFF2196F3),
