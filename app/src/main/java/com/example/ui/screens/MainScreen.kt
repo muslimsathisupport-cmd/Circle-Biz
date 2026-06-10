@@ -259,6 +259,7 @@ fun ProfileScreen(onLogout: () -> Unit) {
     var lastCheckInTime by remember { mutableStateOf(0L) }
     var dailyRewardAmount by remember { androidx.compose.runtime.mutableDoubleStateOf(2.0) }
     var referRewardAmount by remember { androidx.compose.runtime.mutableDoubleStateOf(10.0) }
+    var isReferEnabled by remember { mutableStateOf(true) }
     var myReferralCode by remember { mutableStateOf("") }
     val requiredAdsForReward = 3
     var snackbarMessage by remember { mutableStateOf<String?>(null) }
@@ -320,19 +321,16 @@ fun ProfileScreen(onLogout: () -> Unit) {
                 }
 
             // 3. Listen to dynamic referral settings
-            db.collection("settings").document("refer_settings")
+            db.collection("settings").document("referral")
                 .addSnapshotListener { snapshot, error ->
                     if (snapshot != null && snapshot.exists()) {
-                        val reward = when (val value = snapshot.get("refer_reward")) {
+                        val reward = when (val value = snapshot.get("bonus_amount")) {
                             is Number -> value.toDouble()
                             is String -> value.toDoubleOrNull() ?: 10.0
-                            else -> when (val v2 = snapshot.get("reward_amount")) {
-                                is Number -> v2.toDouble()
-                                is String -> v2.toDoubleOrNull() ?: 10.0
-                                else -> 10.0
-                            }
+                            else -> 10.0
                         }
                         referRewardAmount = reward
+                        isReferEnabled = snapshot.getBoolean("is_enabled") ?: true
                     }
                 }
         } else {
@@ -606,7 +604,7 @@ fun ProfileScreen(onLogout: () -> Unit) {
     var showSettings by remember { mutableStateOf(false) }
     var showAdminSettings by remember { mutableStateOf(false) }
     var showDailyCheckInFullScreen by remember { mutableStateOf(false) }
-    var showReferEarnDialog by remember { mutableStateOf(false) }
+    var showReferEarnFullScreen by remember { mutableStateOf(false) }
 
     if (showDailyCheckInFullScreen) {
         androidx.compose.ui.window.Dialog(
@@ -622,6 +620,20 @@ fun ProfileScreen(onLogout: () -> Unit) {
         }
     }
 
+    if (showReferEarnFullScreen) {
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { showReferEarnFullScreen = false },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            androidx.compose.material3.Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = androidx.compose.material3.MaterialTheme.colorScheme.background
+            ) {
+                ReferAndEarnScreen(onBack = { showReferEarnFullScreen = false })
+            }
+        }
+    }
+
     if (showSettings) {
         com.example.ui.screens.SettingsScreen(onBack = { showSettings = false })
     }
@@ -630,129 +642,6 @@ fun ProfileScreen(onLogout: () -> Unit) {
         com.example.ui.screens.AdminSettingsScreen(onBack = { showAdminSettings = false })
     }
 
-
-    if (showReferEarnDialog) {
-        Dialog(onDismissRequest = { showReferEarnDialog = false }) {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface),
-                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(24.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(64.dp)
-                            .align(Alignment.CenterHorizontally)
-                            .background(Color(0xFFF3E5F5), RoundedCornerShape(16.dp)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Share,
-                            contentDescription = null,
-                            tint = Color(0xFF8E24AA),
-                            modifier = Modifier.size(32.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(16.dp))
-                    
-                    Text(
-                        text = "Refer & Earn (রেফার ও আয়)",
-                        style = androidx.compose.material3.MaterialTheme.typography.titleLarge,
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                        color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.align(Alignment.CenterHorizontally)
-                    )
-                    
-                    Spacer(modifier = Modifier.height(12.dp))
-                    
-                    Text(
-                        text = "আপনার আমন্ত্রিত কোডটি ব্যবহার করে আপনার কোনো বন্ধু নতুন অ্যাকাউন্ট খুললে আপনি এবং আপনার বন্ধু পেয়ে যাবেন তাত্ক্ষণিক ৳$referRewardAmount বোনাস!",
-                        style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
-                        color = Color.Gray,
-                        textAlign = TextAlign.Center
-                    )
-                    
-                    Spacer(modifier = Modifier.height(16.dp))
-                    
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        androidx.compose.material3.OutlinedTextField(
-                            value = myReferralCode.ifEmpty { "লোড হচ্ছে..." },
-                            onValueChange = {},
-                            readOnly = true,
-                            label = { Text("Your Referral Code (আপনার রেফার কোড)") },
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(12.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        androidx.compose.material3.IconButton(
-                            onClick = {
-                                if (myReferralCode.isNotEmpty()) {
-                                    val clipboardManager = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                                    val clip = android.content.ClipData.newPlainText("Referral Code", myReferralCode)
-                                    clipboardManager.setPrimaryClip(clip)
-                                    android.widget.Toast.makeText(context, "রেফার কোড কপি করা হয়েছে! 📋", android.widget.Toast.LENGTH_SHORT).show()
-                                }
-                            },
-                            modifier = Modifier
-                                .background(
-                                    androidx.compose.material3.MaterialTheme.colorScheme.primary,
-                                    shape = androidx.compose.foundation.shape.CircleShape
-                                )
-                                .size(48.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.ContentCopy,
-                                contentDescription = "Copy code",
-                                tint = androidx.compose.material3.MaterialTheme.colorScheme.onPrimary
-                            )
-                        }
-                    }
-                    
-                    Spacer(modifier = Modifier.height(16.dp))
-                    
-                    Button(
-                        onClick = {
-                            if (myReferralCode.isNotEmpty()) {
-                                val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                                    type = "text/plain"
-                                    putExtra(android.content.Intent.EXTRA_SUBJECT, "Referral Code")
-                                    putExtra(android.content.Intent.EXTRA_TEXT, "আমার রেফার কোড ব্যবহার করে এই অ্যাপ্লিকেশনে অ্যাকাউন্ট খুলুন এবং বোনাস পান! রেফার কোড: $myReferralCode")
-                                }
-                                context.startActivity(android.content.Intent.createChooser(shareIntent, "Share with"))
-                            }
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(50.dp),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Icon(Icons.Filled.Share, contentDescription = "Share", modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Share Referral Link")
-                    }
-                    
-                    Spacer(modifier = Modifier.height(8.dp))
-                    
-                    androidx.compose.material3.TextButton(
-                        onClick = { showReferEarnDialog = false },
-                        modifier = Modifier.align(Alignment.CenterHorizontally)
-                    ) {
-                        Text("বন্ধ করুন")
-                    }
-                }
-            }
-        }
-    }
 
     androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxSize()) {
         androidx.compose.foundation.layout.Column(
@@ -918,14 +807,16 @@ fun ProfileScreen(onLogout: () -> Unit) {
                 )
                 
                 // 4. Refer & Earn
-                ProfileListItem(
-                    icon = Icons.Filled.Share,
-                    title = "Refer & Earn",
-                    iconBgColor = Color(0xFFF3E5F5),
-                    iconTint = Color(0xFF8E24AA),
-                    trailingText = "৳$referRewardAmount",
-                    onClick = { showReferEarnDialog = true }
-                )
+                if (isReferEnabled) {
+                    ProfileListItem(
+                        icon = Icons.Filled.Share,
+                        title = "Refer & Earn",
+                        iconBgColor = Color(0xFFF3E5F5),
+                        iconTint = Color(0xFF8E24AA),
+                        trailingText = "৳$referRewardAmount",
+                        onClick = { showReferEarnFullScreen = true }
+                    )
+                }
 
                 // 5. Logout
                 ProfileListItem(

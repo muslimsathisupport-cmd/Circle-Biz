@@ -363,41 +363,41 @@ fun SignUpScreen(onNavigateToLogin: () -> Unit, onSignUpSuccess: () -> Unit) {
                                             if (dbTask.isSuccessful) {
                                                 // If there's a referrer, apply the referral bonus dynamically
                                                 if (referrerUid != null) {
-                                                    db.collection("settings").document("refer_settings").get()
+                                                    db.collection("settings").document("referral").get()
                                                         .addOnCompleteListener { settingTask ->
                                                             var bonusAmount = 10.0 // Default 10 Taka
+                                                            var isReferEnabled = true
                                                             if (settingTask.isSuccessful && settingTask.result.exists()) {
-                                                                bonusAmount = when (val value = settingTask.result.get("refer_reward")) {
+                                                                bonusAmount = when (val value = settingTask.result.get("bonus_amount")) {
                                                                     is Number -> value.toDouble()
                                                                     is String -> value.toDoubleOrNull() ?: 10.0
-                                                                    else -> when (val fallbackVal = settingTask.result.get("reward_amount")) {
-                                                                        is Number -> fallbackVal.toDouble()
-                                                                        is String -> fallbackVal.toDoubleOrNull() ?: 10.0
-                                                                        else -> 10.0
-                                                                    }
+                                                                    else -> 10.0
                                                                 }
+                                                                isReferEnabled = settingTask.result.getBoolean("is_enabled") ?: true
                                                             }
                                                             
-                                                            // Credit the referrer
-                                                            val referrerRef = db.collection("users").document(referrerUid)
-                                                            db.runTransaction { tx ->
-                                                                val refSnap = tx.get(referrerRef)
-                                                                val currentRefBalance = when (val bal = refSnap.get("balance")) {
-                                                                    is Number -> bal.toDouble()
-                                                                    is String -> bal.toDoubleOrNull() ?: 0.0
-                                                                    else -> 0.0
+                                                            if (isReferEnabled) {
+                                                                // Credit the referrer
+                                                                val referrerRef = db.collection("users").document(referrerUid)
+                                                                db.runTransaction { tx ->
+                                                                    val refSnap = tx.get(referrerRef)
+                                                                    val currentRefBalance = when (val bal = refSnap.get("balance")) {
+                                                                        is Number -> bal.toDouble()
+                                                                        is String -> bal.toDoubleOrNull() ?: 0.0
+                                                                        else -> 0.0
+                                                                    }
+                                                                    tx.update(referrerRef, "balance", currentRefBalance + bonusAmount)
+                                                                }.addOnCompleteListener { txTask ->
+                                                                    // Write notification for the referrer
+                                                                    val notifRef = db.collection("notifications").document()
+                                                                    val notifMap = hashMapOf(
+                                                                        "title" to "রেফার বোনাস যোগ হয়েছে! 🎁",
+                                                                        "message" to "আপনার রেফার কোড ব্যবহার করে $trimmedFirstName অ্যাকাউন্ট খোলার জন্য আপনি ৳$bonusAmount বোনাস পেয়েছেন।",
+                                                                        "timestamp" to System.currentTimeMillis(),
+                                                                        "userId" to referrerUid
+                                                                    )
+                                                                    notifRef.set(notifMap)
                                                                 }
-                                                                tx.update(referrerRef, "balance", currentRefBalance + bonusAmount)
-                                                            }.addOnCompleteListener { txTask ->
-                                                                // Write notification for the referrer
-                                                                val notifRef = db.collection("notifications").document()
-                                                                val notifMap = hashMapOf(
-                                                                    "title" to "রেফার বোনাস যোগ হয়েছে! 🎁",
-                                                                    "message" to "আপনার রেফার কোড ব্যবহার করে $trimmedFirstName অ্যাকাউন্ট খোলার জন্য আপনি ৳$bonusAmount বোনাস পেয়েছেন।",
-                                                                    "timestamp" to System.currentTimeMillis(),
-                                                                    "userId" to referrerUid
-                                                                )
-                                                                notifRef.set(notifMap)
                                                             }
                                                         }
                                                 }
@@ -441,38 +441,39 @@ fun SignUpScreen(onNavigateToLogin: () -> Unit, onSignUpSuccess: () -> Unit) {
                                                         .addOnCompleteListener { saveTask ->
                                                             if (saveTask.isSuccessful) {
                                                                 if (referrerUid != null) {
-                                                                    db.collection("settings").document("refer_settings").get()
+                                                                    db.collection("settings").document("referral").get()
                                                                         .addOnCompleteListener { settingTask ->
                                                                             var bonusAmount = 10.0
+                                                                            var isReferEnabled = true
                                                                             if (settingTask.isSuccessful && settingTask.result.exists()) {
-                                                                                bonusAmount = when (val value = settingTask.result.get("refer_reward")) {
+                                                                                bonusAmount = when (val value = settingTask.result.get("bonus_amount")) {
                                                                                     is Number -> value.toDouble()
                                                                                     is String -> value.toDoubleOrNull() ?: 10.0
-                                                                                    else -> when (val fallbackVal = settingTask.result.get("reward_amount")) {
-                                                                                        is Number -> fallbackVal.toDouble()
-                                                                                        is String -> fallbackVal.toDoubleOrNull() ?: 10.0
-                                                                                        else -> 10.0
-                                                                                    }
+                                                                                    else -> 10.0
                                                                                 }
+                                                                                isReferEnabled = settingTask.result.getBoolean("is_enabled") ?: true
                                                                             }
-                                                                            val referrerRef = db.collection("users").document(referrerUid)
-                                                                            db.runTransaction { tx ->
-                                                                                val refSnap = tx.get(referrerRef)
-                                                                                val currentRefBalance = when (val bal = refSnap.get("balance")) {
-                                                                                    is Number -> bal.toDouble()
-                                                                                    is String -> bal.toDoubleOrNull() ?: 0.0
-                                                                                    else -> 0.0
+                                                                            
+                                                                            if (isReferEnabled) {
+                                                                                val referrerRef = db.collection("users").document(referrerUid)
+                                                                                db.runTransaction { tx ->
+                                                                                    val refSnap = tx.get(referrerRef)
+                                                                                    val currentRefBalance = when (val bal = refSnap.get("balance")) {
+                                                                                        is Number -> bal.toDouble()
+                                                                                        is String -> bal.toDoubleOrNull() ?: 0.0
+                                                                                        else -> 0.0
+                                                                                    }
+                                                                                    tx.update(referrerRef, "balance", currentRefBalance + bonusAmount)
+                                                                                }.addOnCompleteListener { txTask ->
+                                                                                    val notifRef = db.collection("notifications").document()
+                                                                                    val notifMap = hashMapOf(
+                                                                                        "title" to "রেফার বোনাস যোগ হয়েছে! 🎁",
+                                                                                        "message" to "আপনার রেফার কোড ব্যবহার করে $trimmedFirstName অ্যাকাউন্ট খোলার জন্য আপনি ৳$bonusAmount বোনাস পেয়েছেন।",
+                                                                                        "timestamp" to System.currentTimeMillis(),
+                                                                                        "userId" to referrerUid
+                                                                                    )
+                                                                                    notifRef.set(notifMap)
                                                                                 }
-                                                                                tx.update(referrerRef, "balance", currentRefBalance + bonusAmount)
-                                                                            }.addOnCompleteListener { txTask ->
-                                                                                val notifRef = db.collection("notifications").document()
-                                                                                val notifMap = hashMapOf(
-                                                                                    "title" to "রেফার বোনাস যোগ হয়েছে! 🎁",
-                                                                                    "message" to "আপনার রেফার কোড ব্যবহার করে $trimmedFirstName অ্যাকাউন্ট খোলার জন্য আপনি ৳$bonusAmount বোনাস পেয়েছেন।",
-                                                                                    "timestamp" to System.currentTimeMillis(),
-                                                                                    "userId" to referrerUid
-                                                                                )
-                                                                                notifRef.set(notifMap)
                                                                             }
                                                                         }
                                                                 }
