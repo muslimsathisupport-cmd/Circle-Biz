@@ -257,6 +257,7 @@ fun ProfileScreen(onLogout: () -> Unit) {
     var adsWatched by remember { mutableStateOf(0) }
     var showingAdProgressDialog by remember { mutableStateOf(false) }
     var lastCheckInTime by remember { mutableStateOf(0L) }
+    var lastCheckInDate by remember { mutableStateOf("") }
     var dailyRewardAmount by remember { androidx.compose.runtime.mutableDoubleStateOf(2.0) }
     var referRewardAmount by remember { androidx.compose.runtime.mutableDoubleStateOf(10.0) }
     var isReferEnabled by remember { mutableStateOf(true) }
@@ -284,6 +285,7 @@ fun ProfileScreen(onLogout: () -> Unit) {
                         firstName = snapshot.getString("firstName") ?: ""
                         lastName = snapshot.getString("lastName") ?: ""
                         mobile = snapshot.getString("mobile") ?: ""
+                        lastCheckInDate = snapshot.getString("last_checkin_date") ?: ""
                         balance = when (val value = snapshot.get("balance")) {
                             is Number -> value.toDouble()
                             is String -> value.toDoubleOrNull() ?: 0.0
@@ -1033,26 +1035,26 @@ fun ProfileScreen(onLogout: () -> Unit) {
                 )
                 
                 // 3. Daily Check-in
+                val todayDate = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
+                val isTodayCheckedIn = lastCheckInDate == todayDate
                 ProfileListItem(
                     icon = Icons.Filled.CardGiftcard,
                     title = "Daily Check-in",
                     iconBgColor = Color(0xFFFFF3E0),
                     iconTint = Color(0xFFFB8C00),
-                    trailingText = if (canCheckIn) "৳$dailyRewardAmount" else "Completed",
+                    trailingText = if (isTodayCheckedIn) "Completed" else "৳$dailyRewardAmount",
                     onClick = { showDailyCheckInFullScreen = true }
                 )
                 
                 // 4. Refer & Earn
-                if (isReferEnabled) {
-                    ProfileListItem(
-                        icon = Icons.Filled.Share,
-                        title = "Refer & Earn",
-                        iconBgColor = Color(0xFFF3E5F5),
-                        iconTint = Color(0xFF8E24AA),
-                        trailingText = "৳$referRewardAmount",
-                        onClick = { showReferEarnFullScreen = true }
-                    )
-                }
+                ProfileListItem(
+                    icon = Icons.Filled.Share,
+                    title = "Refer & Earn",
+                    iconBgColor = Color(0xFFF3E5F5),
+                    iconTint = Color(0xFF8E24AA),
+                    trailingText = if (isReferEnabled) "৳$referRewardAmount" else "Disabled",
+                    onClick = { showReferEarnFullScreen = true }
+                )
 
                 // 5. Logout
                 ProfileListItem(

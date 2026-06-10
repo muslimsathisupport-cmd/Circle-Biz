@@ -33,7 +33,7 @@ fun DailyCheckInScreen(onBack: () -> Unit) {
     val db = FirebaseFirestore.getInstance()
     val userId = UserSession.getUid(context)
 
-    var amount by remember { mutableStateOf(0.0) }
+    var amount by remember { mutableStateOf(2.0) }
     var isEnabled by remember { mutableStateOf(true) }
     var lastCheckInDate by remember { mutableStateOf("") }
     var isCheckingIn by remember { mutableStateOf(false) }
@@ -182,12 +182,14 @@ fun DailyCheckInScreen(onBack: () -> Unit) {
                                     else -> 0.0
                                 }
                                 
-                                transaction.update(userRef, "balance", currentBalance + amount)
+                                val claimAmount = if (amount <= 0.0) 2.0 else amount
+                                transaction.update(userRef, "balance", currentBalance + claimAmount)
                                 transaction.update(userRef, "last_checkin_date", todayDate)
                             }.addOnSuccessListener {
                                 isCheckingIn = false
                                 lastCheckInDate = todayDate
-                                showSuccessMessage = "অভিনন্দন! আপনি সফলভাবে ৳$amount পুরস্কার পেয়েছেন।"
+                                val claimAmount = if (amount <= 0.0) 2.0 else amount
+                                showSuccessMessage = "অভিনন্দন! আপনি সফলভাবে ৳$claimAmount পুরস্কার পেয়েছেন।"
                             }.addOnFailureListener {
                                 isCheckingIn = false
                                 showErrorMessage = "ব্যর্থ হয়েছে: ${it.localizedMessage}"
@@ -199,7 +201,7 @@ fun DailyCheckInScreen(onBack: () -> Unit) {
                         .padding(horizontal = 32.dp)
                         .height(56.dp),
                     shape = RoundedCornerShape(12.dp),
-                    enabled = !alreadyCheckedIn && amount > 0,
+                    enabled = !alreadyCheckedIn,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = if (alreadyCheckedIn) Color.Gray else MaterialTheme.colorScheme.primary
                     )
