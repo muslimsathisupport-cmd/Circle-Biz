@@ -112,56 +112,59 @@ fun LoginScreen(onNavigateToSignUp: () -> Unit, onLoginSuccess: () -> Unit) {
 
         Button(
             onClick = {
-                if (mobileNumber.isNotBlank() && password.isNotBlank()) {
+                val trimmedMobile = mobileNumber.trim()
+                val trimmedPassword = password.trim()
+                if (trimmedMobile.isNotBlank() && trimmedPassword.isNotBlank()) {
                     isLoading = true
-                    val email = if (mobileNumber.contains("@")) mobileNumber else "$mobileNumber@user.com"
+                    val email = if (trimmedMobile.contains("@")) trimmedMobile else "$trimmedMobile@user.com"
                     val auth = com.google.firebase.auth.FirebaseAuth.getInstance()
                     val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
                     
-                    val securePassword = if (password.length < 6) password.padEnd(6, '0') else password
+                    val securePassword = if (trimmedPassword.length < 6) trimmedPassword.padEnd(6, '0') else trimmedPassword
                     auth.signInWithEmailAndPassword(email, securePassword)
                         .addOnCompleteListener { task ->
                             if (task.isSuccessful) {
                                 val uid = auth.currentUser?.uid ?: ""
                                 UserSession.saveSession(context, uid)
                                 isLoading = false
-                                Toast.makeText(context, "Login successful!", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "লগইন সফল হয়েছে!", Toast.LENGTH_SHORT).show()
                                 onLoginSuccess()
                             } else {
                                 // Try fallback check in Firestore users collection
                                 db.collection("users")
-                                    .whereEqualTo("mobile", mobileNumber)
+                                    .whereEqualTo("mobile", trimmedMobile)
                                     .get()
                                     .addOnCompleteListener { firestoreTask ->
                                         if (firestoreTask.isSuccessful && !firestoreTask.result.isEmpty) {
                                             val document = firestoreTask.result.documents[0]
-                                            val savedPassword = document.getString("password")
-                                            if (savedPassword == password) {
+                                            val savedPassword = document.getString("password")?.trim() ?: ""
+                                            if (savedPassword == trimmedPassword) {
                                                 // If FirebaseAuth currentUser is null, do a silent anonymous sign in
                                                 if (auth.currentUser == null) {
                                                     auth.signInAnonymously().addOnCompleteListener { anonTask ->
                                                         val finalUid = document.id
                                                         UserSession.saveSession(context, finalUid)
                                                         isLoading = false
-                                                        Toast.makeText(context, "Login successful!", Toast.LENGTH_SHORT).show()
+                                                        Toast.makeText(context, "লগইন সফল হয়েছে!", Toast.LENGTH_SHORT).show()
                                                         onLoginSuccess()
                                                     }
                                                 } else {
                                                     val finalUid = document.id
                                                     UserSession.saveSession(context, finalUid)
                                                     isLoading = false
-                                                    Toast.makeText(context, "Login successful!", Toast.LENGTH_SHORT).show()
+                                                    Toast.makeText(context, "লগইন সফল হয়েছে!", Toast.LENGTH_SHORT).show()
                                                     onLoginSuccess()
                                                 }
                                             } else {
                                                 isLoading = false
-                                                Toast.makeText(context, "Incorrect Password!", Toast.LENGTH_LONG).show()
+                                                Toast.makeText(context, "ভুল পাসওয়ার্ড! অনুগ্রহ করে আবার চেষ্টা করুন।", Toast.LENGTH_LONG).show()
                                             }
                                         } else {
                                             isLoading = false
+                                            val errorMsg = task.exception?.localizedMessage ?: "অ্যাকাউন্ট পাওয়া যায়নি"
                                             Toast.makeText(
                                                 context, 
-                                                "Login failed: ${task.exception?.localizedMessage ?: "User not found"}", 
+                                                "লগইন ব্যর্থ: $errorMsg", 
                                                 Toast.LENGTH_LONG
                                             ).show()
                                         }
@@ -172,7 +175,7 @@ fun LoginScreen(onNavigateToSignUp: () -> Unit, onLoginSuccess: () -> Unit) {
             },
             modifier = Modifier.fillMaxWidth().height(48.dp),
             shape = inputShape,
-            enabled = !isLoading && mobileNumber.isNotBlank() && password.isNotBlank()
+            enabled = !isLoading && mobileNumber.trim().isNotBlank() && password.trim().isNotBlank()
         ) {
             if (isLoading) {
                 CircularProgressIndicator(color = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(24.dp))
@@ -322,26 +325,35 @@ fun SignUpScreen(onNavigateToLogin: () -> Unit, onSignUpSuccess: () -> Unit) {
 
         Button(
             onClick = {
-                if (isFormValid) {
+                val trimmedFirstName = firstName.trim()
+                val trimmedLastName = lastName.trim()
+                val trimmedMobile = mobileNumber.trim()
+                val trimmedPassword = password.trim()
+                val trimmedConfirm = confirmPassword.trim()
+
+                if (trimmedFirstName.isNotBlank() && trimmedLastName.isNotBlank() && 
+                    trimmedMobile.isNotBlank() && trimmedPassword.isNotBlank() && 
+                    trimmedConfirm.isNotBlank() && trimmedPassword == trimmedConfirm) {
+                    
                     isLoading = true
-                    val email = if (mobileNumber.contains("@")) mobileNumber else "$mobileNumber@user.com"
+                    val email = if (trimmedMobile.contains("@")) trimmedMobile else "$trimmedMobile@user.com"
                     val auth = com.google.firebase.auth.FirebaseAuth.getInstance()
                     val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
                     val enteredReferral = referralCode.trim().uppercase()
 
                     // Function to design real registration save logic to avoid duplication
                     fun proceedWithRegister(referrerUid: String?) {
-                        val securePassword = if (password.length < 6) password.padEnd(6, '0') else password
+                        val securePassword = if (trimmedPassword.length < 6) trimmedPassword.padEnd(6, '0') else trimmedPassword
                         auth.createUserWithEmailAndPassword(email, securePassword)
                             .addOnCompleteListener { task ->
                                 if (task.isSuccessful) {
                                     val uid = task.result?.user?.uid ?: ""
                                     val generatedMyReferral = (1..8).map { "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".random() }.joinToString("")
                                     val userMap = hashMapOf(
-                                        "firstName" to firstName,
-                                        "lastName" to lastName,
-                                        "mobile" to mobileNumber,
-                                        "password" to password,
+                                        "firstName" to trimmedFirstName,
+                                        "lastName" to trimmedLastName,
+                                        "mobile" to trimmedMobile,
+                                        "password" to trimmedPassword,
                                         "referralCode" to enteredReferral,
                                         "myReferralCode" to generatedMyReferral,
                                         "balance" to 0.0
@@ -381,7 +393,7 @@ fun SignUpScreen(onNavigateToLogin: () -> Unit, onSignUpSuccess: () -> Unit) {
                                                                 val notifRef = db.collection("notifications").document()
                                                                 val notifMap = hashMapOf(
                                                                     "title" to "রেফার বোনাস যোগ হয়েছে! 🎁",
-                                                                    "message" to "আপনার রেফার কোড ব্যবহার করে $firstName অ্যাকাউন্ট খোলার জন্য আপনি ৳$bonusAmount বোনাস পেয়েছেন।",
+                                                                    "message" to "আপনার রেফার কোড ব্যবহার করে $trimmedFirstName অ্যাকাউন্ট খোলার জন্য আপনি ৳$bonusAmount বোনাস পেয়েছেন।",
                                                                     "timestamp" to System.currentTimeMillis(),
                                                                     "userId" to referrerUid
                                                                 )
@@ -401,7 +413,7 @@ fun SignUpScreen(onNavigateToLogin: () -> Unit, onSignUpSuccess: () -> Unit) {
                                 } else {
                                     // Fallback: try checking if already registered or register locally via anonymous/custom UID
                                     db.collection("users")
-                                        .whereEqualTo("mobile", mobileNumber)
+                                        .whereEqualTo("mobile", trimmedMobile)
                                         .get()
                                         .addOnCompleteListener { searchTask ->
                                             if (searchTask.isSuccessful && !searchTask.result.isEmpty) {
@@ -417,10 +429,10 @@ fun SignUpScreen(onNavigateToLogin: () -> Unit, onSignUpSuccess: () -> Unit) {
                                                     }
                                                     val generatedMyReferral = (1..8).map { "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".random() }.joinToString("")
                                                     val userMap = hashMapOf(
-                                                        "firstName" to firstName,
-                                                        "lastName" to lastName,
-                                                        "mobile" to mobileNumber,
-                                                        "password" to password,
+                                                        "firstName" to trimmedFirstName,
+                                                        "lastName" to trimmedLastName,
+                                                        "mobile" to trimmedMobile,
+                                                        "password" to trimmedPassword,
                                                         "referralCode" to enteredReferral,
                                                         "myReferralCode" to generatedMyReferral,
                                                         "balance" to 0.0
@@ -456,7 +468,7 @@ fun SignUpScreen(onNavigateToLogin: () -> Unit, onSignUpSuccess: () -> Unit) {
                                                                                 val notifRef = db.collection("notifications").document()
                                                                                 val notifMap = hashMapOf(
                                                                                     "title" to "রেফার বোনাস যোগ হয়েছে! 🎁",
-                                                                                    "message" to "আপনার রেফার কোড ব্যবহার করে $firstName অ্যাকাউন্ট খোলার জন্য আপনি ৳$bonusAmount বোনাস পেয়েছেন।",
+                                                                                    "message" to "আপনার রেফার কোড ব্যবহার করে $trimmedFirstName অ্যাকাউন্ট খোলার জন্য আপনি ৳$bonusAmount বোনাস পেয়েছেন।",
                                                                                     "timestamp" to System.currentTimeMillis(),
                                                                                     "userId" to referrerUid
                                                                                 )

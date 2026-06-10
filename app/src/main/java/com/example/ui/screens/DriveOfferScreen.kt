@@ -47,6 +47,7 @@ fun DriveOfferScreen(onBack: () -> Unit) {
     DisposableEffect(Unit) {
         val listenerRegistration = com.google.firebase.firestore.FirebaseFirestore.getInstance()
             .collection("drive_offers")
+            .whereEqualTo("isActive", true)
             .addSnapshotListener { snapshot, error ->
                 if (snapshot != null) {
                     val list = snapshot.documents.mapNotNull { doc ->
@@ -59,13 +60,13 @@ fun DriveOfferScreen(onBack: () -> Unit) {
                             val regularPrice = when (val value = doc.get("regularPrice")) {
                                 is Number -> value.toDouble()
                                 is String -> value.toDoubleOrNull() ?: 0.0
-                                else -> 0.0
+                                else -> doc.getDouble("regularPrice") ?: 0.0
                             }
                             
                             val offerPrice = when (val value = doc.get("offerPrice")) {
                                 is Number -> value.toDouble()
                                 is String -> value.toDoubleOrNull() ?: 0.0
-                                else -> 0.0
+                                else -> doc.getDouble("offerPrice") ?: 0.0
                             }
                             
                             DriveOffer(id, operator, title, description, regularPrice, offerPrice)
@@ -248,25 +249,29 @@ fun DriveHistoryDialog(onDismiss: () -> Unit) {
     var isLoading by remember { mutableStateOf(true) }
     val currentUserUid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
 
-    LaunchedEffect(currentUserUid) {
+    DisposableEffect(currentUserUid) {
         if (currentUserUid.isNotBlank()) {
-            com.google.firebase.firestore.FirebaseFirestore.getInstance()
+            val listenerRegistration = com.google.firebase.firestore.FirebaseFirestore.getInstance()
                 .collection("drive_orders")
                 .whereEqualTo("userId", currentUserUid)
-                .get()
-                .addOnSuccessListener { result ->
-                    val list = result.documents.map { doc ->
-                        val map = doc.data ?: emptyMap<String, Any>()
-                        map + ("id" to doc.id)
+                .addSnapshotListener { snapshot, error ->
+                    if (snapshot != null) {
+                        val list = snapshot.documents.map { doc ->
+                            val map = doc.data ?: emptyMap<String, Any>()
+                            map + ("id" to doc.id)
+                        }.sortedByDescending { (it["timestamp"] as? com.google.firebase.Timestamp)?.toDate()?.time ?: 0L }
+                        
+                        historyList = list
                     }
-                    historyList = list
                     isLoading = false
                 }
-                .addOnFailureListener {
-                    isLoading = false
-                }
+            
+            onDispose {
+                listenerRegistration.remove()
+            }
         } else {
             isLoading = false
+            onDispose {}
         }
     }
 

@@ -3,15 +3,7 @@ package com.example.ui.screens
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -215,27 +207,61 @@ fun MobileRechargeScreen(onBack: () -> Unit) {
                     }
 
                     item {
-                        Button(
-                            onClick = {
-                                coroutineScope.launch {
-                                    showMessage = true
-                                    delay(3000)
-                                    showMessage = false
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth().height(52.dp),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text("Recharge Now", style = MaterialTheme.typography.titleMedium, color = Color.White)
-                        }
+                        var isSubmitting by remember { mutableStateOf(false) }
+                        val snackbarHostState = remember { SnackbarHostState() }
                         
-                        AnimatedVisibility(visible = showMessage) {
-                            Text(
-                                text = "Coming Soon",
-                                color = MaterialTheme.colorScheme.primary,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(top = 16.dp)
-                            )
+                        Scaffold(
+                            modifier = Modifier.fillMaxWidth().height(100.dp),
+                            snackbarHost = { SnackbarHost(snackbarHostState) },
+                            containerColor = Color.Transparent
+                        ) { _ ->
+                            Button(
+                                onClick = {
+                                    val amtValue = amount.toDoubleOrNull() ?: 0.0
+                                    if (phoneNumber.length >= 10 && amtValue > 0 && selectedProvider.isNotBlank()) {
+                                        isSubmitting = true
+                                        val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                                        val currentUserUid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+                                        
+                                        val rechargeData = hashMapOf(
+                                            "userId" to currentUserUid,
+                                            "amount" to amtValue,
+                                            "phoneNumber" to phoneNumber,
+                                            "operator" to selectedProvider,
+                                            "status" to "pending",
+                                            "createdAt" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
+                                            "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp() // redundant but safe
+                                        )
+                                        
+                                        db.collection("recharge_requests")
+                                            .add(rechargeData)
+                                            .addOnCompleteListener { task ->
+                                                isSubmitting = false
+                                                if (task.isSuccessful) {
+                                                    coroutineScope.launch {
+                                                        phoneNumber = ""
+                                                        amount = ""
+                                                        selectedProvider = ""
+                                                        snackbarHostState.showSnackbar("Recharge request submitted successfully!")
+                                                    }
+                                                } else {
+                                                    coroutineScope.launch {
+                                                        snackbarHostState.showSnackbar("Error: ${task.exception?.localizedMessage}")
+                                                    }
+                                                }
+                                            }
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth().height(52.dp),
+                                shape = RoundedCornerShape(8.dp),
+                                enabled = !isSubmitting && phoneNumber.isNotBlank() && amount.isNotBlank() && selectedProvider.isNotBlank()
+                            ) {
+                                if (isSubmitting) {
+                                    androidx.compose.material3.CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White, strokeWidth = 2.dp)
+                                } else {
+                                    Text("Recharge Now", style = MaterialTheme.typography.titleMedium, color = Color.White)
+                                }
+                            }
                         }
                         
                         Spacer(modifier = Modifier.height(32.dp))
@@ -245,22 +271,85 @@ fun MobileRechargeScreen(onBack: () -> Unit) {
         }
         
         if (showHistory) {
-            Dialog(onDismissRequest = { showHistory = false }) {
-                Card(
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color.White)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text("Recharge History", style = MaterialTheme.typography.titleLarge, color = Color.Black)
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text("No recharge history found yet.", textAlign = TextAlign.Center, color = Color.Gray)
-                        Spacer(modifier = Modifier.height(24.dp))
-                        Button(onClick = { showHistory = false }) {
-                            Text("Close")
+            Dialog(onDismissRequest = { showHistory = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+                Surface(modifier = Modifier.fillMaxSize(), color = Color.White) {
+                    var historyList by remember { mutableStateOf<List<Map<String, Any>>>(emptyList()) }
+                    var isLoadingHistory by remember { mutableStateOf(true) }
+                    val currentUserUid = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: ""
+
+                    androidx.compose.runtime.DisposableEffect(currentUserUid) {
+                        if (currentUserUid.isNotBlank()) {
+                            val listener = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                                .collection("recharge_requests")
+                                .whereEqualTo("userId", currentUserUid)
+                                .addSnapshotListener { snapshot, _ ->
+                                    if (snapshot != null) {
+                                        historyList = snapshot.documents.map { doc ->
+                                            val data = doc.data ?: emptyMap<String, Any>()
+                                            data + ("id" to doc.id)
+                                        }.sortedByDescending { (it["createdAt"] as? com.google.firebase.Timestamp)?.toDate()?.time ?: 0L }
+                                    }
+                                    isLoadingHistory = false
+                                }
+                            onDispose { listener.remove() }
+                        } else {
+                            isLoadingHistory = false
+                            onDispose {}
+                        }
+                    }
+
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        TopAppBar(
+                            title = { Text("Recharge History") },
+                            navigationIcon = {
+                                IconButton(onClick = { showHistory = false }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
+                            }
+                        )
+                        
+                        if (isLoadingHistory) {
+                            androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                androidx.compose.material3.CircularProgressIndicator()
+                            }
+                        } else if (historyList.isEmpty()) {
+                            androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Text("No recharge history found yet.", color = Color.Gray)
+                            }
+                        } else {
+                            LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+                                items(historyList) { item ->
+                                    val operator = item["operator"] as? String ?: ""
+                                    val phone = item["phoneNumber"] as? String ?: ""
+                                    val amt = item["amount"]?.toString() ?: "0"
+                                    val status = item["status"] as? String ?: "pending"
+                                    val ts = item["createdAt"] as? com.google.firebase.Timestamp
+                                    val dateStr = ts?.toDate()?.let { 
+                                        java.text.SimpleDateFormat("dd MMM, hh:mm a", java.util.Locale.getDefault()).format(it)
+                                    } ?: ""
+
+                                    Card(
+                                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                        colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F5)),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Row(modifier = Modifier.padding(16.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                            Column {
+                                                Text(operator, fontWeight = FontWeight.Bold)
+                                                Text(phone, style = MaterialTheme.typography.bodySmall)
+                                                Text(dateStr, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                                            }
+                                            Column(horizontalAlignment = Alignment.End) {
+                                                Text("৳$amt", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                                val statusColor = when (status.lowercase()) {
+                                                    "pending" -> Color(0xFFFF9800)
+                                                    "approved", "success" -> Color(0xFF4CAF50)
+                                                    else -> Color.Red
+                                                }
+                                                Text(status.replaceFirstChar { it.uppercase() }, color = statusColor, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }

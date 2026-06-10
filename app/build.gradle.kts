@@ -14,9 +14,9 @@ android {
   defaultConfig {
     applicationId = "com.circlebiz"
     minSdk = 24
-    targetSdk = 35
-    versionCode = 2
-    versionName = "1.1"
+    targetSdk = 33
+    versionCode = 12
+    versionName = "1.0.12"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
