@@ -163,7 +163,7 @@ fun MainScreen(onLogout: () -> Unit) {
     ) { innerPadding ->
         Box(modifier = Modifier.padding(innerPadding).consumeWindowInsets(innerPadding).fillMaxSize()) {
             when (selectedItemIndex) {
-                0 -> HomeScreen()
+                0 -> HomeScreen(onLogout = onLogout)
                 1 -> ToolsScreen()
                 2 -> ShopScreen()
                 3 -> WalletScreen()
@@ -705,11 +705,12 @@ fun ProfileScreen(onLogout: () -> Unit) {
     if (showEditProfile) {
         Dialog(
             onDismissRequest = { showEditProfile = false },
-            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
         ) {
+            com.example.ui.screens.FullScreenDialogModifier()
             androidx.compose.material3.Surface(
                 modifier = Modifier.fillMaxSize(),
-                color = androidx.compose.material3.MaterialTheme.colorScheme.background
+                color = androidx.compose.ui.graphics.Color.White
             ) {
                 var editFirstName by remember { mutableStateOf(firstName) }
                 var editLastName by remember { mutableStateOf(lastName) }
@@ -847,11 +848,12 @@ fun ProfileScreen(onLogout: () -> Unit) {
     if (showDailyCheckInFullScreen) {
         androidx.compose.ui.window.Dialog(
             onDismissRequest = { showDailyCheckInFullScreen = false },
-            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
         ) {
+            com.example.ui.screens.FullScreenDialogModifier()
             androidx.compose.material3.Surface(
                 modifier = Modifier.fillMaxSize(),
-                color = androidx.compose.material3.MaterialTheme.colorScheme.background
+                color = androidx.compose.ui.graphics.Color.White
             ) {
                 DailyCheckInScreen(onBack = { showDailyCheckInFullScreen = false })
             }
@@ -861,11 +863,12 @@ fun ProfileScreen(onLogout: () -> Unit) {
     if (showReferEarnFullScreen) {
         androidx.compose.ui.window.Dialog(
             onDismissRequest = { showReferEarnFullScreen = false },
-            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
         ) {
+            com.example.ui.screens.FullScreenDialogModifier()
             androidx.compose.material3.Surface(
                 modifier = Modifier.fillMaxSize(),
-                color = androidx.compose.material3.MaterialTheme.colorScheme.background
+                color = androidx.compose.ui.graphics.Color.White
             ) {
                 ReferAndEarnScreen(onBack = { showReferEarnFullScreen = false })
             }

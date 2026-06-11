@@ -31,6 +31,34 @@ import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.random.Random
 
+val spinRewards = listOf(
+    Pair("৳5", 5.0),
+    Pair("৳1", 1.0),
+    Pair("৳0.50", 0.50),
+    Pair("৳0.30", 0.30),
+    Pair("৳0.20", 0.20),
+    Pair("৳0.15", 0.15),
+    Pair("৳0.10", 0.10),
+    Pair("৳0.05", 0.05),
+    Pair("৳0.02", 0.02),
+    Pair("৳0.01", 0.01)
+)
+
+private fun rollSpin(): Int {
+    val chance = Random.nextDouble()
+    return when {
+        chance < 0.01 -> 1 // ৳1 (1%)
+        chance < 0.04 -> 2 // ৳0.50 (3%)
+        chance < 0.10 -> 3 // ৳0.30 (6%)
+        chance < 0.25 -> 4 // ৳0.20 (15%)
+        chance < 0.40 -> 5 // ৳0.15 (15%)
+        chance < 0.55 -> 6 // ৳0.10 (15%)
+        chance < 0.70 -> 7 // ৳0.05 (15%)
+        chance < 0.85 -> 8 // ৳0.02 (15%)
+        else -> 9          // ৳0.01 (15%)
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SpinScreen(onBack: () -> Unit) {
@@ -41,7 +69,6 @@ fun SpinScreen(onBack: () -> Unit) {
 
     var dailyLimit by remember { mutableIntStateOf(10) }
     var breakTimeMinutes by remember { mutableIntStateOf(5) }
-    var rewardAmount by remember { mutableDoubleStateOf(0.5) }
     var isEnabled by remember { mutableStateOf(true) }
     
     var userSpinsCount by remember { mutableIntStateOf(0) }
@@ -52,6 +79,7 @@ fun SpinScreen(onBack: () -> Unit) {
     var rotationAngle by remember { mutableStateOf(0f) }
     var showRewardDialog by remember { mutableStateOf(false) }
     var earnedReward by remember { mutableDoubleStateOf(0.0) }
+    var isSavingReward by remember { mutableStateOf(false) }
     
     // Listen to admin settings
     LaunchedEffect(Unit) {
@@ -61,7 +89,6 @@ fun SpinScreen(onBack: () -> Unit) {
                     isEnabled = snapshot.getBoolean("is_enabled") ?: true
                     dailyLimit = snapshot.getLong("daily_limit")?.toInt() ?: 10
                     breakTimeMinutes = snapshot.getLong("break_time")?.toInt() ?: 5
-                    rewardAmount = snapshot.getDouble("reward_amount") ?: 0.5
                 }
             }
         
@@ -182,20 +209,33 @@ fun SpinScreen(onBack: () -> Unit) {
 
             Button(
                 onClick = {
-                    if (!isSpinning && spinsLeft > 0 && !isRelaxing && isEnabled) {
+                    if (!isSpinning && spinsLeft > 0 && !isRelaxing && isEnabled && !isSavingReward) {
                         isSpinning = true
+                        isSavingReward = true
                         scope.launch {
-                            val extraRotation = 360f * 5 + Random.nextInt(360)
+                            val targetIndex = rollSpin()
+                            val sweepAngle = 360f / spinRewards.size
+                            val segmentCenterAngle = targetIndex * sweepAngle + sweepAngle / 2f
+                            
+                            var targetRot = 270f - segmentCenterAngle
+                            targetRot = (targetRot % 360f + 360f) % 360f
+                            
+                            val normalizeCurrentRot = (rotationAngle % 360f + 360f) % 360f
+                            var rotationDiff = targetRot - normalizeCurrentRot
+                            if (rotationDiff < 0) rotationDiff += 360f
+                            
+                            val extraRotation = 360f * 5 + rotationDiff
+
                             animate(
                                 initialValue = rotationAngle,
                                 targetValue = rotationAngle + extraRotation,
-                                animationSpec = tween(durationMillis = 3000, easing = FastOutSlowInEasing)
+                                animationSpec = tween(durationMillis = 3500, easing = FastOutSlowInEasing)
                             ) { value, _ ->
                                 rotationAngle = value
                             }
                             
                             isSpinning = false
-                            earnedReward = rewardAmount
+                            earnedReward = spinRewards[targetIndex].second
                             
                             // Update Firestore
                             db.runTransaction { transaction ->
@@ -208,7 +248,10 @@ fun SpinScreen(onBack: () -> Unit) {
                                 transaction.update(userDoc, "daily_spins_count", currentCount + 1)
                                 transaction.update(userDoc, "last_spin_timestamp", System.currentTimeMillis())
                             }.addOnSuccessListener {
+                                isSavingReward = false
                                 showRewardDialog = true
+                            }.addOnFailureListener {
+                                isSavingReward = false
                             }
                         }
                     }
@@ -217,11 +260,11 @@ fun SpinScreen(onBack: () -> Unit) {
                     .fillMaxWidth(0.7f)
                     .height(56.dp),
                 shape = RoundedCornerShape(28.dp),
-                enabled = !isSpinning && spinsLeft > 0 && !isRelaxing && isEnabled,
+                enabled = !isSpinning && spinsLeft > 0 && !isRelaxing && isEnabled && !isSavingReward,
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF673AB7))
             ) {
                 Text(
-                    text = if (!isEnabled) "Disabled" else if (isSpinning) "Spinning..." else if (spinsLeft <= 0) "Limit Reached" else "Spin Now",
+                    text = if (!isEnabled) "Disabled" else if (isSpinning || isSavingReward) "Spinning..." else if (spinsLeft <= 0) "Limit Reached" else "Spin Now",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
@@ -244,7 +287,7 @@ fun SpinScreen(onBack: () -> Unit) {
             onDismissRequest = { showRewardDialog = false },
             confirmButton = {
                 Button(onClick = { showRewardDialog = false }) {
-                    Text("Great!")
+                    Text("Collect")
                 }
             },
             title = { Text("Congratulations!") },
@@ -273,8 +316,22 @@ fun StatCard(label: String, value: String, color: Color) {
 
 @Composable
 fun Wheel(rotation: Float) {
-    val segments = 6
-    val colors = listOf(Color(0xFFFF5722), Color(0xFFFFEB3B))
+    val segments = spinRewards.size
+    val colors = listOf(
+        Color(0xFFE91E63), Color(0xFF9C27B0), Color(0xFF3F51B5), 
+        Color(0xFF2196F3), Color(0xFF009688), Color(0xFF4CAF50), 
+        Color(0xFFFF9800), Color(0xFFFF5722), Color(0xFF795548), 
+        Color(0xFF607D8B)
+    )
+    
+    val textPaint = remember {
+        android.graphics.Paint().apply {
+            color = android.graphics.Color.WHITE
+            textSize = 36f
+            textAlign = android.graphics.Paint.Align.CENTER
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+        }
+    }
     
     Canvas(
         modifier = Modifier
@@ -284,24 +341,29 @@ fun Wheel(rotation: Float) {
         val sweepAngle = 360f / segments
         for (i in 0 until segments) {
             drawArc(
-                color = colors[i % 2],
+                color = colors[i % colors.size],
                 startAngle = i * sweepAngle,
                 sweepAngle = sweepAngle,
                 useCenter = true,
                 size = Size(size.width, size.height)
             )
             
-            // Draw segment numbers or dots
-            val angle = (i * sweepAngle + sweepAngle / 2) * (PI / 180).toFloat()
-            val radius = size.width / 2.5f
-            val x = size.width / 2 + radius * cos(angle)
-            val y = size.height / 2 + radius * sin(angle)
+            // Draw text
+            drawContext.canvas.nativeCanvas.save()
+            val center = Offset(size.width / 2, size.height / 2)
+            val angle = i * sweepAngle + sweepAngle / 2
             
-            drawCircle(
-                color = Color.Black.copy(alpha = 0.2f),
-                radius = 4.dp.toPx(),
-                center = Offset(x, y)
+            drawContext.canvas.nativeCanvas.translate(center.x, center.y)
+            drawContext.canvas.nativeCanvas.rotate(angle)
+            
+            val textRadius = size.width / 2 * 0.7f
+            drawContext.canvas.nativeCanvas.drawText(
+                spinRewards[i].first,
+                textRadius,
+                textPaint.textSize / 3, // adjust vertically
+                textPaint
             )
+            drawContext.canvas.nativeCanvas.restore()
         }
         
         // Outer Border (Black Ring)
@@ -336,3 +398,4 @@ fun Wheel(rotation: Float) {
         )
     }
 }
+

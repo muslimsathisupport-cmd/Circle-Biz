@@ -96,6 +96,7 @@ fun DailyCheckInScreen(onBack: () -> Unit) {
     }
 
     Scaffold(
+        containerColor = Color.White,
         topBar = {
             TopAppBar(
                 title = { Text("Daily Check-in", fontWeight = FontWeight.Bold) },

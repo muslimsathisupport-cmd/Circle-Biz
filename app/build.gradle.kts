@@ -13,10 +13,10 @@ android {
 
   defaultConfig {
     applicationId = "com.circlebiz"
-    minSdk = 23
-    targetSdk = 33
-    versionCode = 13
-    versionName = "1.0.13"
+    minSdk = 24
+    targetSdk = 34
+    versionCode = 14
+    versionName = "1.0.14"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -34,6 +34,8 @@ android {
       storePassword = "android"
       keyAlias = "androiddebugkey"
       keyPassword = "android"
+      enableV1Signing = true
+      enableV2Signing = true
     }
   }
 
@@ -131,16 +133,7 @@ tasks.register<Copy>("copyApkToRoot") {
   from(layout.buildDirectory.dir("outputs/apk/debug"))
   include("**/*.apk")
   into(exportDirFile)
-  rename { "CircleBiz-Debug.apk" }
-  
-  val sourceApk = exportDirFile.resolve("CircleBiz-Debug.apk")
-  val destApk = exportDirFile.resolve("EarningApp-Debug.apk")
-  
-  doLast {
-    if (sourceApk.exists()) {
-      sourceApk.copyTo(destApk, overwrite = true)
-    }
-  }
+  rename { "EarningApp.apk" }
 }
 
 afterEvaluate {

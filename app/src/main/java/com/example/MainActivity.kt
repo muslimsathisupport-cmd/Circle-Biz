@@ -18,7 +18,14 @@ class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     MobileAds.initialize(this) {}
-    enableEdgeToEdge()
+    enableEdgeToEdge(
+        statusBarStyle = androidx.activity.SystemBarStyle.light(
+            android.graphics.Color.WHITE, android.graphics.Color.WHITE
+        ),
+        navigationBarStyle = androidx.activity.SystemBarStyle.light(
+            android.graphics.Color.WHITE, android.graphics.Color.WHITE
+        )
+    )
     setContent {
       MyApplicationTheme {
         val context = androidx.compose.ui.platform.LocalContext.current

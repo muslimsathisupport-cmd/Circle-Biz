@@ -578,8 +578,9 @@ fun DepositDialog(onDismiss: () -> Unit, onSubmitted: (Double, String) -> Unit) 
 
     var isSubmitting by remember { mutableStateOf(false) }
 
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        com.example.ui.screens.FullScreenDialogModifier()
+        Surface(modifier = Modifier.fillMaxSize(), color = androidx.compose.ui.graphics.Color.White) {
             Column(modifier = Modifier.fillMaxSize().padding(16.dp).verticalScroll(androidx.compose.foundation.rememberScrollState())) {
                 TopAppBar(
                     title = { Text("Deposit Funds") },
@@ -818,8 +819,9 @@ fun WithdrawDialog(availableBalance: Double, onDismiss: () -> Unit, onSubmitted:
         }
     }
 
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        com.example.ui.screens.FullScreenDialogModifier()
+        Surface(modifier = Modifier.fillMaxSize(), color = androidx.compose.ui.graphics.Color.White) {
             Column(modifier = Modifier.fillMaxSize().padding(16.dp).verticalScroll(androidx.compose.foundation.rememberScrollState())) {
                 TopAppBar(
                     title = { Text("Withdraw Funds") },

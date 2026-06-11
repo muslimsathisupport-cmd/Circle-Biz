@@ -191,7 +191,7 @@ fun SellTaskScreen(task: EarningTask, onBack: () -> Unit) {
 
     Dialog(
         onDismissRequest = onBack,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
     ) {
         com.example.ui.screens.FullScreenDialogModifier()
         Surface(
@@ -581,7 +581,7 @@ fun SubmissionHistoryDialog(onDismiss: () -> Unit, taskName: String, categoryCol
 
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
     ) {
         com.example.ui.screens.FullScreenDialogModifier()
         Surface(
@@ -663,7 +663,7 @@ fun HistoryItem(account: String, status: String, statusColor: Color, reward: Str
 fun RulesDialog(onDismiss: () -> Unit, task: EarningTask, requiredPassword: String) {
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
     ) {
         com.example.ui.screens.FullScreenDialogModifier()
         Surface(

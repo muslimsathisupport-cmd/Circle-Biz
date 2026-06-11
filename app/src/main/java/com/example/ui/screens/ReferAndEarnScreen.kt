@@ -89,6 +89,7 @@ fun ReferAndEarnScreen(onBack: () -> Unit) {
     }
 
     Scaffold(
+        containerColor = Color.White,
         topBar = {
             TopAppBar(
                 title = { Text("Refer & Earn", fontWeight = FontWeight.Bold) },

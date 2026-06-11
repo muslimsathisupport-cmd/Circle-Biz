@@ -99,11 +99,12 @@ fun NotificationScreen(onBack: () -> Unit) {
 
     Dialog(
         onDismissRequest = onBack,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
     ) {
+        com.example.ui.screens.FullScreenDialogModifier()
         Surface(
             modifier = Modifier.fillMaxSize(),
-            color = MaterialTheme.colorScheme.background
+            color = Color.White
         ) {
             Scaffold(
                 topBar = {

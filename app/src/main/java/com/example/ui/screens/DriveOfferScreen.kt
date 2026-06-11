@@ -129,7 +129,7 @@ fun DriveOfferScreen(onBack: () -> Unit) {
         )
     }
 
-    Dialog(onDismissRequest = onBack, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    Dialog(onDismissRequest = onBack, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         com.example.ui.screens.FullScreenDialogModifier()
         Surface(modifier = Modifier.fillMaxSize(), color = Color.White) {
             Scaffold(
@@ -279,7 +279,7 @@ fun DriveHistoryDialog(onDismiss: () -> Unit) {
         }
     }
 
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         com.example.ui.screens.FullScreenDialogModifier()
         Surface(modifier = Modifier.fillMaxSize(), color = Color.White) {
             Scaffold(

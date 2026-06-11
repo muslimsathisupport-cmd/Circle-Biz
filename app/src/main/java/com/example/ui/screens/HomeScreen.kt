@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -39,6 +40,7 @@ import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.PostAdd
 import androidx.compose.material.icons.filled.QuestionMark
@@ -75,7 +77,21 @@ import androidx.compose.ui.unit.sp
 import com.example.R
 import coil.compose.AsyncImage
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.yield
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.NavigationDrawerItemDefaults
+import androidx.compose.material3.rememberDrawerState
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material.icons.filled.Group
+import androidx.compose.material.icons.filled.Campaign
+import androidx.compose.material.icons.filled.Gavel
+import androidx.compose.material.icons.filled.PrivacyTip
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
+import androidx.compose.material.icons.filled.ContentCopy
 
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -115,13 +131,24 @@ data class Banner(
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
-fun HomeScreen() {
+fun HomeScreen(onLogout: () -> Unit = {}) {
     var selectedTask by remember { mutableStateOf<EarningTask?>(null) }
     var showNotifications by remember { mutableStateOf(false) }
+    var showWatchTimeScreen by remember { mutableStateOf(false) }
     
     var unreadNotificationsCount by remember { mutableStateOf(0) }
     var firebaseBanners by remember { mutableStateOf<List<Banner>>(emptyList()) }
     var dailyCheckInEnabled by remember { mutableStateOf(true) }
+    
+    // User fields for Sidebar
+    var userFirstName by remember { mutableStateOf("") }
+    var userLastName by remember { mutableStateOf("") }
+    var userBalance by remember { mutableStateOf(0.0) }
+    var userReferralCode by remember { mutableStateOf("") }
+    var userAvatar by remember { mutableStateOf("") }
+    
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
     
     val context = androidx.compose.ui.platform.LocalContext.current
     val currentUserUid = UserSession.getUid(context)
@@ -131,6 +158,17 @@ fun HomeScreen() {
             onDispose {}
         } else {
             val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+            
+            val userListener = db.collection("users").document(currentUserUid)
+                .addSnapshotListener { snapshot, error ->
+                    if (snapshot != null && snapshot.exists()) {
+                        userFirstName = snapshot.getString("firstName") ?: ""
+                        userLastName = snapshot.getString("lastName") ?: ""
+                        userBalance = snapshot.getDouble("balance") ?: 0.0
+                        userReferralCode = snapshot.getString("myReferralCode") ?: snapshot.getString("referralCode") ?: ""
+                        userAvatar = snapshot.getString("avatar") ?: snapshot.getString("profile_image") ?: ""
+                    }
+                }
             
             val notifListener = db.collection("notifications")
                 .whereEqualTo("userId", currentUserUid)
@@ -225,6 +263,7 @@ fun HomeScreen() {
                 }
                 
             onDispose {
+                userListener.remove()
                 notifListener.remove()
                 bannerListener.remove()
                 checkInListener.remove()
@@ -254,14 +293,192 @@ fun HomeScreen() {
     
     val visibleTasks = if (isExpanded) tasks else tasks.take(12)
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet(
+                modifier = Modifier.width(300.dp),
+                drawerContainerColor = MaterialTheme.colorScheme.surface
+            ) {
+                // Sidebar Header
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.primary)
+                        .padding(24.dp)
+                ) {
+                    Column {
+                        if (userAvatar.isNotBlank()) {
+                            AsyncImage(
+                                model = userAvatar,
+                                contentDescription = "Profile Logo",
+                                modifier = Modifier
+                                    .size(64.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.White),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .size(64.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.White),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.AccountCircle,
+                                    contentDescription = "Profile Logo",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(48.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                        val fullName = "$userFirstName $userLastName".trim().ifBlank { "User" }
+                        Text(
+                            text = fullName,
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Balance: ৳${String.format("%.2f", userBalance)}",
+                            color = Color.White,
+                            fontSize = 14.sp
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.clickable {
+                                val clipboardManager = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                val clipData = android.content.ClipData.newPlainText("Referral Code", userReferralCode)
+                                clipboardManager.setPrimaryClip(clipData)
+                                android.widget.Toast.makeText(context, "Referral Code Copied", android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                        ) {
+                            Text(
+                                text = "Ref: $userReferralCode",
+                                color = Color.White.copy(alpha = 0.8f),
+                                fontSize = 14.sp
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Icon(
+                                imageVector = Icons.Filled.ContentCopy,
+                                contentDescription = "Copy",
+                                tint = Color.White.copy(alpha = 0.8f),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                }
+                
+                // Sidebar Options
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    NavigationDrawerItem(
+                        icon = { Icon(Icons.Filled.Group, contentDescription = "Facebook Group", tint = Color(0xFF1877F2)) },
+                        label = { Text("Facebook Group") },
+                        selected = false,
+                        onClick = {
+                            coroutineScope.launch { drawerState.close() }
+                        },
+                        modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                    )
+                    
+                    NavigationDrawerItem(
+                        icon = { Icon(Icons.Filled.Group, contentDescription = "Telegram Group", tint = Color(0xFF0088CC)) },
+                        label = { Text("Telegram Group") },
+                        selected = false,
+                        onClick = {
+                            coroutineScope.launch { drawerState.close() }
+                        },
+                        modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                    )
+                    
+                    NavigationDrawerItem(
+                        icon = { Icon(Icons.Filled.Campaign, contentDescription = "Telegram Channel", tint = Color(0xFF0088CC)) },
+                        label = { Text("Telegram Channel") },
+                        selected = false,
+                        onClick = {
+                            coroutineScope.launch { drawerState.close() }
+                        },
+                        modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                    )
+                    
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                    
+                    NavigationDrawerItem(
+                        icon = { Icon(Icons.Filled.ReportProblem, contentDescription = "Report a problem", tint = Color.Gray) },
+                        label = { Text("Report a problem") },
+                        selected = false,
+                        onClick = {
+                            coroutineScope.launch { drawerState.close() }
+                        },
+                        modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                    )
+                    
+                    NavigationDrawerItem(
+                        icon = { Icon(Icons.Filled.Gavel, contentDescription = "Terms and condition", tint = Color.Gray) },
+                        label = { Text("Terms & Conditions") },
+                        selected = false,
+                        onClick = {
+                            coroutineScope.launch { drawerState.close() }
+                        },
+                        modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                    )
+                    
+                    NavigationDrawerItem(
+                        icon = { Icon(Icons.Filled.PrivacyTip, contentDescription = "Privacy policy", tint = Color.Gray) },
+                        label = { Text("Privacy Policy") },
+                        selected = false,
+                        onClick = {
+                            coroutineScope.launch { drawerState.close() }
+                        },
+                        modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                    )
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    NavigationDrawerItem(
+                        icon = { Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = "Log Out", tint = MaterialTheme.colorScheme.error) },
+                        label = { Text("Log Out", color = MaterialTheme.colorScheme.error) },
+                        selected = false,
+                        onClick = {
+                            coroutineScope.launch { drawerState.close() }
+                            onLogout()
+                        },
+                        modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                    )
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
+            }
+        }
     ) {
-        TopAppBar(
-            title = {
-                Text(
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+        ) {
+            TopAppBar(
+                navigationIcon = {
+                    IconButton(onClick = { coroutineScope.launch { drawerState.open() } }) {
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                            horizontalAlignment = Alignment.Start,
+                            modifier = Modifier.padding(4.dp)
+                        ) {
+                            Box(modifier = Modifier.height(3.dp).width(22.dp).clip(RoundedCornerShape(1.5.dp)).background(MaterialTheme.colorScheme.onSurface))
+                            Box(modifier = Modifier.height(3.dp).width(16.dp).clip(RoundedCornerShape(1.5.dp)).background(MaterialTheme.colorScheme.onSurface))
+                            Box(modifier = Modifier.height(3.dp).width(10.dp).clip(RoundedCornerShape(1.5.dp)).background(MaterialTheme.colorScheme.onSurface))
+                        }
+                    }
+                },
+                title = {
+                    Text(
                     text = "CircleBiz",
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
@@ -424,7 +641,23 @@ fun HomeScreen() {
 
         // Grid of services (Manual implementation for scrollability)
         Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-            visibleTasks.chunked(4).forEach { rowTasks ->
+            val rows = visibleTasks.chunked(4)
+            rows.forEachIndexed { index, rowTasks ->
+                if (index == 2) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    AsyncImage(
+                        model = "https://res.cloudinary.com/dhlzcea1t/image/upload/v1781163018/qyucgdznzdxinnij6qlt.png",
+                        contentDescription = "Offer Banner",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(16f/9f)
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { showWatchTimeScreen = true },
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+                
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -479,6 +712,11 @@ fun HomeScreen() {
         }
         
         Spacer(modifier = Modifier.height(32.dp))
+        }
+    }
+
+    if (showWatchTimeScreen) {
+        WatchTimeScreen(onBack = { showWatchTimeScreen = false })
     }
 
     if (selectedTask != null) {

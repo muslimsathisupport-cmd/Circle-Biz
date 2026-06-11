@@ -315,7 +315,7 @@ fun QuizScreen(onBack: () -> Unit) {
 
     Dialog(
         onDismissRequest = onBack,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
     ) {
         com.example.ui.screens.FullScreenDialogModifier()
         Surface(

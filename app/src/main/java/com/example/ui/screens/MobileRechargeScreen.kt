@@ -140,7 +140,7 @@ fun MobileRechargeScreen(onBack: () -> Unit) {
 
     Dialog(
         onDismissRequest = onBack,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
     ) {
         com.example.ui.screens.FullScreenDialogModifier()
         Surface(modifier = Modifier.fillMaxSize(), color = Color.White) {
@@ -600,7 +600,7 @@ fun AmountEntryView(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RechargeHistoryDialog(onDismiss: () -> Unit, context: Context) {
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         com.example.ui.screens.FullScreenDialogModifier()
         Surface(modifier = Modifier.fillMaxSize(), color = Color.White) {
             var historyList by remember { mutableStateOf<List<Map<String, Any>>>(emptyList()) }

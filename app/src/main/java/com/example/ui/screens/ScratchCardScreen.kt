@@ -26,6 +26,14 @@ import androidx.compose.ui.unit.sp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.launch
+import android.app.Activity
+import com.google.android.gms.ads.AdError
+import com.google.android.gms.ads.AdRequest
+import com.google.android.gms.ads.FullScreenContentCallback
+import com.google.android.gms.ads.LoadAdError
+import com.google.android.gms.ads.rewarded.RewardedAd
+import com.google.android.gms.ads.rewarded.RewardedAdLoadCallback
+import androidx.compose.ui.platform.LocalContext
 import kotlin.random.Random
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -35,7 +43,34 @@ fun ScratchCardScreen(onBack: () -> Unit) {
     val auth = FirebaseAuth.getInstance()
     val userId = auth.currentUser?.uid ?: ""
     val scope = rememberCoroutineScope()
-    
+    val context = LocalContext.current
+    var rewardedAd by remember { mutableStateOf<RewardedAd?>(null) }
+    var isAdLoading by remember { mutableStateOf(false) }
+
+    fun loadAd() {
+        if (rewardedAd != null || isAdLoading) return
+        isAdLoading = true
+        val adRequest = AdRequest.Builder().build()
+        RewardedAd.load(
+            context,
+            "ca-app-pub-4288324218526190/8832383188",
+            adRequest,
+            object : RewardedAdLoadCallback() {
+                override fun onAdFailedToLoad(adError: LoadAdError) {
+                    rewardedAd = null
+                    isAdLoading = false
+                }
+                override fun onAdLoaded(ad: RewardedAd) {
+                    rewardedAd = ad
+                    isAdLoading = false
+                }
+            })
+    }
+
+    LaunchedEffect(Unit) {
+        loadAd()
+    }
+
     var userBalance by remember { mutableDoubleStateOf(0.0) }
     var scratchCardAmount by remember { mutableDoubleStateOf(0.0) }
     var isScratched by remember { mutableStateOf(false) }
@@ -242,10 +277,6 @@ fun ScratchCardScreen(onBack: () -> Unit) {
                                     
                                     if (path.size > 80 && !isScratched) {
                                         isScratched = true
-                                        saveReward(db, userId, scratchCardAmount) {
-                                            isSavingReward = false
-                                            showRewardDialog = true
-                                        }
                                     }
                                 }
                             }
@@ -286,15 +317,41 @@ fun ScratchCardScreen(onBack: () -> Unit) {
             if (isScratched) {
                 Button(
                     onClick = {
-                        // Reset for another go (optional, or just go back)
-                        isScratched = false
-                        scratchCardAmount = rewardsList.random()
+                        if (isSavingReward) return@Button
+                        isSavingReward = true
+                        val activity = context as? Activity
+                        if (rewardedAd != null && activity != null) {
+                            rewardedAd?.fullScreenContentCallback = object : FullScreenContentCallback() {
+                                override fun onAdDismissedFullScreenContent() {
+                                    rewardedAd = null
+                                    loadAd()
+                                    saveReward(db, userId, scratchCardAmount) {
+                                        isSavingReward = false
+                                        showRewardDialog = true
+                                    }
+                                }
+                                override fun onAdFailedToShowFullScreenContent(adError: AdError) {
+                                    rewardedAd = null
+                                    loadAd()
+                                    saveReward(db, userId, scratchCardAmount) {
+                                        isSavingReward = false
+                                        showRewardDialog = true
+                                    }
+                                }
+                            }
+                            rewardedAd?.show(activity) { _ -> }
+                        } else {
+                            saveReward(db, userId, scratchCardAmount) {
+                                isSavingReward = false
+                                showRewardDialog = true
+                            }
+                        }
                     },
                     modifier = Modifier.fillMaxWidth(0.7f),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9800)),
-                    enabled = isEnabled && !isRelaxing && scratchesLeft > 0
+                    enabled = isEnabled && !isRelaxing && scratchesLeft > 0 && !isSavingReward
                 ) {
-                    Text("Collect More Rewards")
+                    Text(if (isSavingReward) "Please wait..." else "Collect Bonus")
                 }
             } else {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -313,9 +370,17 @@ fun ScratchCardScreen(onBack: () -> Unit) {
 
     if (showRewardDialog) {
         AlertDialog(
-            onDismissRequest = { showRewardDialog = false },
+            onDismissRequest = { 
+                showRewardDialog = false
+                isScratched = false
+                scratchCardAmount = rewardsList.random()
+            },
             confirmButton = {
-                Button(onClick = { showRewardDialog = false }) {
+                Button(onClick = { 
+                    showRewardDialog = false
+                    isScratched = false
+                    scratchCardAmount = rewardsList.random()
+                }) {
                     Text("Great!")
                 }
             },
