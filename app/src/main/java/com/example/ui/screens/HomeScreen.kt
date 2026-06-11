@@ -147,6 +147,9 @@ fun HomeScreen(onLogout: () -> Unit = {}) {
     var userReferralCode by remember { mutableStateOf("") }
     var userAvatar by remember { mutableStateOf("") }
     
+    var showTerms by remember { mutableStateOf(false) }
+    var showPrivacy by remember { mutableStateOf(false) }
+    
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
     
@@ -384,6 +387,8 @@ fun HomeScreen(onLogout: () -> Unit = {}) {
                         selected = false,
                         onClick = {
                             coroutineScope.launch { drawerState.close() }
+                            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://www.facebook.com/share/g/1FaDuk6DdJ/"))
+                            context.startActivity(intent)
                         },
                         modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
                     )
@@ -394,6 +399,8 @@ fun HomeScreen(onLogout: () -> Unit = {}) {
                         selected = false,
                         onClick = {
                             coroutineScope.launch { drawerState.close() }
+                            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://t.me/circlebizsupport"))
+                            context.startActivity(intent)
                         },
                         modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
                     )
@@ -404,6 +411,8 @@ fun HomeScreen(onLogout: () -> Unit = {}) {
                         selected = false,
                         onClick = {
                             coroutineScope.launch { drawerState.close() }
+                            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://t.me/circlebiz"))
+                            context.startActivity(intent)
                         },
                         modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
                     )
@@ -426,6 +435,7 @@ fun HomeScreen(onLogout: () -> Unit = {}) {
                         selected = false,
                         onClick = {
                             coroutineScope.launch { drawerState.close() }
+                            showTerms = true
                         },
                         modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
                     )
@@ -436,6 +446,7 @@ fun HomeScreen(onLogout: () -> Unit = {}) {
                         selected = false,
                         onClick = {
                             coroutineScope.launch { drawerState.close() }
+                            showPrivacy = true
                         },
                         modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
                     )
@@ -713,6 +724,16 @@ fun HomeScreen(onLogout: () -> Unit = {}) {
         
         Spacer(modifier = Modifier.height(32.dp))
         }
+    }
+
+    if (showTerms) {
+        TermsAndConditionsScreen(onBack = { showTerms = false })
+        return
+    }
+    
+    if (showPrivacy) {
+        PrivacyPolicyScreen(onBack = { showPrivacy = false })
+        return
     }
 
     if (showWatchTimeScreen) {

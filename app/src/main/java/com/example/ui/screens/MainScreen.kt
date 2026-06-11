@@ -34,13 +34,14 @@ import androidx.compose.foundation.background
 import androidx.compose.ui.graphics.Color
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AccountCircle
-import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Widgets
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Wallet
 import androidx.compose.material.icons.filled.CardGiftcard
 import androidx.compose.material.icons.outlined.AccountCircle
-import androidx.compose.material.icons.outlined.Build
+import androidx.compose.material.icons.outlined.Widgets
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.ShoppingCart
 import androidx.compose.material.icons.outlined.Wallet
@@ -95,8 +96,8 @@ val bottomNavItems = listOf(
     ),
     BottomNavItem(
         title = "Tools",
-        selectedIcon = Icons.Filled.Build,
-        unselectedIcon = Icons.Outlined.Build,
+        selectedIcon = Icons.Filled.Widgets,
+        unselectedIcon = Icons.Outlined.Widgets,
         route = "tools"
     ),
     BottomNavItem(
@@ -1020,7 +1021,7 @@ fun ProfileScreen(onLogout: () -> Unit) {
 
                 if (isAdmin) {
                     ProfileListItem(
-                        icon = Icons.Default.Build,
+                        icon = Icons.Default.Settings,
                         title = "Admin Panel",
                         iconBgColor = Color(0xFFE0F7FA),
                         iconTint = Color(0xFF00ACC1),
