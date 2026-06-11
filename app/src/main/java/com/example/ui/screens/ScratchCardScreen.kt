@@ -42,29 +42,71 @@ fun ScratchCardScreen(onBack: () -> Unit) {
     var showRewardDialog by remember { mutableStateOf(false) }
     var isSavingReward by remember { mutableStateOf(false) }
 
-    // Listen to user balance
+    var isEnabled by remember { mutableStateOf(true) }
+    var rewardsList by remember { mutableStateOf(listOf(0.1, 0.2, 0.5, 1.0, 2.0)) }
+    var breakTimeMinutes by remember { mutableIntStateOf(5) }
+    var dailyLimit by remember { mutableIntStateOf(10) }
+
+    var lastScratchTime by remember { mutableLongStateOf(0L) }
+    var userScratchesCount by remember { mutableIntStateOf(0) }
+
+    // Listen to admin settings
+    LaunchedEffect(Unit) {
+        db.collection("settings").document("scratch_card")
+            .addSnapshotListener { snapshot, _ ->
+                if (snapshot != null && snapshot.exists()) {
+                    isEnabled = snapshot.getBoolean("is_enabled") ?: true
+                    breakTimeMinutes = snapshot.getLong("break_time")?.toInt() ?: 5
+                    dailyLimit = snapshot.getLong("daily_limit")?.toInt() ?: 10
+                    val rewardsStr = snapshot.getString("rewards") ?: "0.1, 0.2, 0.5, 1.0, 2.0"
+                    rewardsList = rewardsStr.split(",").mapNotNull { it.trim().toDoubleOrNull() }
+                    if (rewardsList.isEmpty()) rewardsList = listOf(0.1)
+                    if (!isScratched && scratchCardAmount == 0.0) {
+                        scratchCardAmount = rewardsList.random()
+                    }
+                }
+            }
+    }
+
+    // Listen to user balance and limits
     LaunchedEffect(userId) {
         if (userId.isNotEmpty()) {
             db.collection("users").document(userId)
                 .addSnapshotListener { snapshot, _ ->
                     if (snapshot != null && snapshot.exists()) {
                         userBalance = snapshot.getDouble("balance") ?: 0.0
+                        userScratchesCount = snapshot.getLong("daily_scratches_count")?.toInt() ?: 0
+                        lastScratchTime = snapshot.getLong("last_scratch_timestamp") ?: 0L
+
+                        // Reset count if it's a new day
+                        val lastDate = snapshot.getLong("last_scratch_date") ?: 0L
+                        val currentDate = System.currentTimeMillis() / (1000 * 60 * 60 * 24)
+                        if (lastDate != currentDate) {
+                            db.collection("users").document(userId).update(
+                                "daily_scratches_count", 0,
+                                "last_scratch_date", currentDate
+                            )
+                        }
                     }
                 }
         }
-        // Generate a random reward for this session
-        scratchCardAmount = listOf(0.1, 0.2, 0.5, 1.0, 2.0).random()
     }
 
+    val timeLeftMs = (lastScratchTime + (breakTimeMinutes * 60 * 1000)) - System.currentTimeMillis()
+    val isRelaxing = timeLeftMs > 0
+    val scratchesLeft = dailyLimit - userScratchesCount
+
     Scaffold(
+        containerColor = Color.White,
         topBar = {
             TopAppBar(
-                title = { Text("Scratch & Win", fontWeight = FontWeight.Bold) },
+                title = { Text("Scratch & Win", fontWeight = FontWeight.Bold, color = Color.Black) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.Black)
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
             )
         }
     ) { padding ->
@@ -72,7 +114,7 @@ fun ScratchCardScreen(onBack: () -> Unit) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .background(MaterialTheme.colorScheme.surface),
+                .background(Color.White),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // Balance Card
@@ -118,6 +160,40 @@ fun ScratchCardScreen(onBack: () -> Unit) {
 
             Spacer(modifier = Modifier.height(24.dp))
 
+            if (!isEnabled) {
+                Text(
+                    text = "This feature is currently disabled.",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.error,
+                    fontWeight = FontWeight.Bold
+                )
+            } else if (isRelaxing) {
+                var countdown by remember { mutableStateOf(timeLeftMs / 1000) }
+                LaunchedEffect(isRelaxing) {
+                    while (countdown > 0) {
+                        kotlinx.coroutines.delay(1000)
+                        countdown--
+                    }
+                }
+                
+                Text(
+                    text = "Break Time: ${countdown / 60}m ${countdown % 60}s",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.error,
+                    fontWeight = FontWeight.Bold
+                )
+            } else if (scratchesLeft <= 0) {
+                Text(
+                    text = "You've reached your daily limit. Come back tomorrow!",
+                    color = Color.Gray,
+                    modifier = Modifier.padding(16.dp),
+                    fontSize = 12.sp,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
             // The Scratch Card Implementation
             Box(
                 modifier = Modifier
@@ -145,7 +221,13 @@ fun ScratchCardScreen(onBack: () -> Unit) {
                 // Scratch Overlay
                 val path = remember { mutableStateListOf<Offset>() }
                 
-                if (!isScratched) {
+                LaunchedEffect(isScratched) {
+                    if (!isScratched) {
+                        path.clear()
+                    }
+                }
+                
+                if (!isScratched && isEnabled && !isRelaxing && scratchesLeft > 0) {
                     Canvas(
                         modifier = Modifier
                             .fillMaxSize()
@@ -158,7 +240,6 @@ fun ScratchCardScreen(onBack: () -> Unit) {
                                     change.consume()
                                     path.add(change.position)
                                     
-                                    // Simple logic to detect if enough is scratched
                                     if (path.size > 80 && !isScratched) {
                                         isScratched = true
                                         saveReward(db, userId, scratchCardAmount) {
@@ -206,10 +287,12 @@ fun ScratchCardScreen(onBack: () -> Unit) {
                 Button(
                     onClick = {
                         // Reset for another go (optional, or just go back)
-                        onBack()
+                        isScratched = false
+                        scratchCardAmount = rewardsList.random()
                     },
                     modifier = Modifier.fillMaxWidth(0.7f),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9800))
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9800)),
+                    enabled = isEnabled && !isRelaxing && scratchesLeft > 0
                 ) {
                     Text("Collect More Rewards")
                 }
@@ -248,7 +331,11 @@ private fun saveReward(db: FirebaseFirestore, userId: String, amount: Double, on
         val userRef = db.collection("users").document(userId)
         val snapshot = transaction.get(userRef)
         val currentBal = snapshot.getDouble("balance") ?: 0.0
+        val currentCount = snapshot.getLong("daily_scratches_count")?.toInt() ?: 0
+        
         transaction.update(userRef, "balance", currentBal + amount)
+        transaction.update(userRef, "daily_scratches_count", currentCount + 1)
+        transaction.update(userRef, "last_scratch_timestamp", System.currentTimeMillis())
     }.addOnCompleteListener {
         onComplete()
     }

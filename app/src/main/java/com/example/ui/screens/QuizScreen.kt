@@ -317,30 +317,33 @@ fun QuizScreen(onBack: () -> Unit) {
         onDismissRequest = onBack,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
+        com.example.ui.screens.FullScreenDialogModifier()
         Surface(
             modifier = Modifier.fillMaxSize(),
-            color = MaterialTheme.colorScheme.background
+            color = Color.White
         ) {
             Scaffold(
+                containerColor = Color.White,
                 topBar = {
                     TopAppBar(
-                        title = { Text(if (isEnglish) "Islamic Quiz" else "ইসলামিক কুইজ") },
+                        title = { Text(if (isEnglish) "Islamic Quiz" else "ইসলামিক কুইজ", color = Color.Black) },
                         navigationIcon = {
                             IconButton(onClick = onBack) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.Black)
                             }
                         },
                         actions = {
                             IconButton(onClick = { isEnglish = !isEnglish }) {
                                 Icon(
                                     imageVector = if (isEnglish) Icons.Default.Language else Icons.Default.Translate,
-                                    contentDescription = "Toggle Language"
+                                    contentDescription = "Toggle Language",
+                                    tint = Color.Black
                                 )
                             }
                         },
                         colors = TopAppBarDefaults.topAppBarColors(
-                            containerColor = MaterialTheme.colorScheme.surface,
-                            titleContentColor = MaterialTheme.colorScheme.onSurface
+                            containerColor = Color.White,
+                            titleContentColor = Color.Black
                         )
                     )
                 }

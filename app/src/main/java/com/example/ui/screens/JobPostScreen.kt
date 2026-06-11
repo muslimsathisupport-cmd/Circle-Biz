@@ -76,6 +76,7 @@ fun JobPostScreen(onBack: () -> Unit) {
     }
 
     Dialog(onDismissRequest = onBack, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        com.example.ui.screens.FullScreenDialogModifier()
         Surface(modifier = Modifier.fillMaxSize(), color = Color.White) {
             Scaffold(
                 containerColor = Color.White,
@@ -341,12 +342,15 @@ fun JobPostHistoryDialog(onDismiss: () -> Unit) {
     }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        com.example.ui.screens.FullScreenDialogModifier()
+        Surface(modifier = Modifier.fillMaxSize(), color = Color.White) {
             Scaffold(
+                containerColor = Color.White,
                 topBar = {
                     TopAppBar(
-                        title = { Text("Job Posts History") },
-                        navigationIcon = { IconButton(onClick = onDismiss) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") } }
+                        title = { Text("Job Posts History", color = Color.Black) },
+                        navigationIcon = { IconButton(onClick = onDismiss) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.Black) } },
+                        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
                     )
                 }
             ) { paddingValues ->

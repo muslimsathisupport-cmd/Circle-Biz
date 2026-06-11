@@ -94,18 +94,20 @@ fun MicroJobScreen(onBack: () -> Unit) {
     }
 
     Dialog(onDismissRequest = onBack, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        com.example.ui.screens.FullScreenDialogModifier()
+        Surface(modifier = Modifier.fillMaxSize(), color = Color.White) {
             Scaffold(
+                containerColor = Color.White,
                 topBar = {
                     TopAppBar(
-                        title = { Text("Micro Jobs") },
+                        title = { Text("Micro Jobs", color = Color.Black) },
                         navigationIcon = {
-                            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
+                            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.Black) }
                         },
                         actions = {
-                            IconButton(onClick = { showHistory = true }) { Icon(Icons.Filled.History, contentDescription = "History") }
+                            IconButton(onClick = { showHistory = true }) { Icon(Icons.Filled.History, contentDescription = "History", tint = Color.Black) }
                         },
-                        colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
+                        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
                     )
                 },
                 snackbarHost = { SnackbarHost(snackbarHostState) }
@@ -193,12 +195,15 @@ fun MicroJobDetailsDialog(job: MicroJob, onDismiss: () -> Unit, onTaskSubmitted:
     }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        com.example.ui.screens.FullScreenDialogModifier()
+        Surface(modifier = Modifier.fillMaxSize(), color = Color.White) {
             Scaffold(
+                containerColor = Color.White,
                 topBar = {
                     TopAppBar(
-                        title = { Text("Job Details") },
-                        navigationIcon = { IconButton(onClick = onDismiss) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") } }
+                        title = { Text("Job Details", color = Color.Black) },
+                        navigationIcon = { IconButton(onClick = onDismiss) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.Black) } },
+                        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
                     )
                 }
             ) { padding ->
@@ -358,12 +363,15 @@ fun MicroJobHistoryDialog(onDismiss: () -> Unit) {
     }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        com.example.ui.screens.FullScreenDialogModifier()
+        Surface(modifier = Modifier.fillMaxSize(), color = Color.White) {
             Scaffold(
+                containerColor = Color.White,
                 topBar = {
                     TopAppBar(
-                        title = { Text("Micro Job History") },
-                        navigationIcon = { IconButton(onClick = onDismiss) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") } }
+                        title = { Text("Micro Job History", color = Color.Black) },
+                        navigationIcon = { IconButton(onClick = onDismiss) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.Black) } },
+                        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
                     )
                 }
             ) { padding ->

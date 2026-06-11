@@ -230,18 +230,20 @@ fun AdViewScreen(task: EarningTask, onBack: () -> Unit) {
     }
 
     Dialog(onDismissRequest = onBack, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        com.example.ui.screens.FullScreenDialogModifier()
+        Surface(modifier = Modifier.fillMaxSize(), color = Color.White) {
             Scaffold(
+                containerColor = Color.White,
                 topBar = {
                     TopAppBar(
-                        title = { Text(task.title) },
+                        title = { Text(task.title, color = Color.Black) },
                         navigationIcon = {
-                            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
+                            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.Black) }
                         },
                         actions = {
-                            IconButton(onClick = { showHistory = true }) { Icon(Icons.Filled.History, contentDescription = "History") }
+                            IconButton(onClick = { showHistory = true }) { Icon(Icons.Filled.History, contentDescription = "History", tint = Color.Black) }
                         },
-                        colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
+                        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
                     )
                 },
                 snackbarHost = { SnackbarHost(snackbarHostState) }
@@ -382,12 +384,15 @@ fun AdViewScreen(task: EarningTask, onBack: () -> Unit) {
 @Composable
 fun AdHistoryDialog(onDismiss: () -> Unit) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        com.example.ui.screens.FullScreenDialogModifier()
+        Surface(modifier = Modifier.fillMaxSize(), color = Color.White) {
             Scaffold(
+                containerColor = Color.White,
                 topBar = {
                     TopAppBar(
-                        title = { Text("Ad View History") },
-                        navigationIcon = { IconButton(onClick = onDismiss) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") } }
+                        title = { Text("Ad View History", color = Color.Black) },
+                        navigationIcon = { IconButton(onClick = onDismiss) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.Black) } },
+                        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
                     )
                 }
             ) { padding ->

@@ -193,6 +193,7 @@ fun SellTaskScreen(task: EarningTask, onBack: () -> Unit) {
         onDismissRequest = onBack,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
+        com.example.ui.screens.FullScreenDialogModifier()
         Surface(
             modifier = Modifier.fillMaxSize(),
             color = Color.White
@@ -582,11 +583,13 @@ fun SubmissionHistoryDialog(onDismiss: () -> Unit, taskName: String, categoryCol
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
+        com.example.ui.screens.FullScreenDialogModifier()
         Surface(
             modifier = Modifier.fillMaxSize(),
-            color = MaterialTheme.colorScheme.background
+            color = Color.White
         ) {
             Scaffold(
+                containerColor = Color.White,
                 topBar = {
                     TopAppBar(
                         title = { Text("$taskName History", color = Color.Black) },
@@ -662,6 +665,7 @@ fun RulesDialog(onDismiss: () -> Unit, task: EarningTask, requiredPassword: Stri
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
+        com.example.ui.screens.FullScreenDialogModifier()
         Surface(
             modifier = Modifier.fillMaxSize(),
             color = Color.White

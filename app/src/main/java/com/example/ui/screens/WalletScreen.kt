@@ -28,6 +28,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import coil.compose.AsyncImage
+import androidx.compose.ui.layout.ContentScale
 
 data class Transaction(
     val id: String,
@@ -432,15 +434,15 @@ fun QuickActions(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        ActionButton("Deposit", Icons.Outlined.ArrowDownward, Color(0xFF4CAF50), onDeposit)
-        ActionButton("Withdraw", Icons.Outlined.ArrowUpward, Color(0xFFF44336), onWithdraw)
+        ActionButton("Deposit", Icons.Outlined.ArrowDownward, Color(0xFF4CAF50), onDeposit, imageUrl = "https://res.cloudinary.com/dhlzcea1t/image/upload/v1781147015/dfb4c6odqbgymblqshz9.png")
+        ActionButton("Withdraw", Icons.Outlined.ArrowUpward, Color(0xFFF44336), onWithdraw, imageUrl = "https://res.cloudinary.com/dhlzcea1t/image/upload/v1781147015/bqkrursvklb52otbmorl.jpg")
         ActionButton("Transfer", Icons.Outlined.SwapHoriz, Color(0xFF2196F3), onTransfer)
         ActionButton("History", Icons.Filled.History, Color(0xFFFF9800), onHistory)
     }
 }
 
 @Composable
-fun ActionButton(title: String, icon: ImageVector, color: Color, onClick: () -> Unit) {
+fun ActionButton(title: String, icon: ImageVector, color: Color, onClick: () -> Unit, imageUrl: String? = null) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.clickable(onClick = onClick)
@@ -451,12 +453,21 @@ fun ActionButton(title: String, icon: ImageVector, color: Color, onClick: () -> 
                 .background(color.copy(alpha = 0.15f), shape = CircleShape),
             contentAlignment = Alignment.Center
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = title,
-                tint = color,
-                modifier = Modifier.size(28.dp)
-            )
+            if (imageUrl != null) {
+                AsyncImage(
+                    model = imageUrl,
+                    contentDescription = title,
+                    modifier = Modifier.size(56.dp).clip(CircleShape),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = title,
+                    tint = color,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
         }
         Spacer(modifier = Modifier.height(8.dp))
         Text(text = title, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)

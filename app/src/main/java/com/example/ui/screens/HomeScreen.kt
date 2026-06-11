@@ -103,7 +103,8 @@ import androidx.compose.foundation.clickable
 data class EarningTask(
     val title: String,
     val icon: ImageVector,
-    val color: Color
+    val color: Color,
+    val imageUrl: String? = null
 )
 
 data class Banner(
@@ -141,6 +142,7 @@ fun HomeScreen() {
                 }
                 
             val bannerListener = db.collection("banners")
+                .whereEqualTo("isActive", true)
                 .addSnapshotListener { snapshot, error ->
                     if (error != null) {
                         android.util.Log.e("FirebaseBanners", "Listener failed", error)
@@ -238,10 +240,10 @@ fun HomeScreen() {
         EarningTask("Blood", Icons.Filled.AddCircle, Color(0xFFF44336)),
         EarningTask("Micro Job", Icons.Filled.WorkHistory, Color(0xFFE91E63)),
         EarningTask("Gmail Sell", Icons.Filled.Email, Color(0xFFF44336)),
-        EarningTask("Facebook Sell", Icons.Filled.ThumbUp, Color(0xFF1877F2)),
-        EarningTask("Instagram Sell", Icons.Filled.AccountCircle, Color(0xFFE1306C)),
-        EarningTask("WhatsApp Sell", Icons.Filled.Phone, Color(0xFF25D336)),
-        EarningTask("Telegram Sell", Icons.Filled.Send, Color(0xFF0088CC)),
+        EarningTask("Facebook Sell", Icons.Filled.ThumbUp, Color(0xFF1877F2), imageUrl = "https://res.cloudinary.com/dhlzcea1t/image/upload/v1781149547/wo20jckg3poe7gdiomik.png"),
+        EarningTask("Instagram Sell", Icons.Filled.AccountCircle, Color(0xFFE1306C), imageUrl = "https://res.cloudinary.com/dhlzcea1t/image/upload/v1781149625/kfm6nr2qdyxxx82c2p76.jpg"),
+        EarningTask("WhatsApp Sell", Icons.Filled.Phone, Color(0xFF25D336), imageUrl = "https://res.cloudinary.com/dhlzcea1t/image/upload/v1781151135/vribxk5me28spsdbfp3f.png"),
+        EarningTask("Telegram Sell", Icons.Filled.Send, Color(0xFF0088CC), imageUrl = "https://res.cloudinary.com/dhlzcea1t/image/upload/v1781151136/krywirdhsugqrhebejmx.png"),
         EarningTask("Job Posts", Icons.Filled.PostAdd, Color(0xFFFF5722)),
         EarningTask("Quiz Job", Icons.Filled.QuestionMark, Color(0xFFFFC107)),
         EarningTask("Typing Job", Icons.Filled.Keyboard, Color(0xFF9C27B0)),
@@ -530,12 +532,21 @@ fun EarningTaskItem(task: EarningTask, onClick: () -> Unit) {
             modifier = Modifier.size(52.dp)
         ) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Icon(
-                    imageVector = task.icon,
-                    contentDescription = task.title,
-                    tint = Color.White,
-                    modifier = Modifier.size(24.dp)
-                )
+                if (task.imageUrl != null) {
+                    AsyncImage(
+                        model = task.imageUrl,
+                        contentDescription = task.title,
+                        modifier = Modifier.fillMaxSize().clip(CircleShape),
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                    )
+                } else {
+                    Icon(
+                        imageVector = task.icon,
+                        contentDescription = task.title,
+                        tint = Color.White,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
             }
         }
         Spacer(modifier = Modifier.height(6.dp))
@@ -570,12 +581,21 @@ fun TaskVerificationBottomSheet(task: EarningTask, onDismiss: () -> Unit) {
                 .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Icon(
-                imageVector = task.icon,
-                contentDescription = null,
-                tint = task.color,
-                modifier = Modifier.size(64.dp)
-            )
+            if (task.imageUrl != null) {
+                AsyncImage(
+                    model = task.imageUrl,
+                    contentDescription = null,
+                    modifier = Modifier.size(64.dp).clip(CircleShape),
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                )
+            } else {
+                Icon(
+                    imageVector = task.icon,
+                    contentDescription = null,
+                    tint = task.color,
+                    modifier = Modifier.size(64.dp)
+                )
+            }
             Spacer(modifier = Modifier.height(16.dp))
             Text(
                 text = "Verify Task: ${task.title}",

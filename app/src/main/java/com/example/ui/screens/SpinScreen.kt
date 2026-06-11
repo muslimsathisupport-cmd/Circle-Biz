@@ -42,6 +42,7 @@ fun SpinScreen(onBack: () -> Unit) {
     var dailyLimit by remember { mutableIntStateOf(10) }
     var breakTimeMinutes by remember { mutableIntStateOf(5) }
     var rewardAmount by remember { mutableDoubleStateOf(0.5) }
+    var isEnabled by remember { mutableStateOf(true) }
     
     var userSpinsCount by remember { mutableIntStateOf(0) }
     var lastSpinTime by remember { mutableLongStateOf(0L) }
@@ -54,9 +55,10 @@ fun SpinScreen(onBack: () -> Unit) {
     
     // Listen to admin settings
     LaunchedEffect(Unit) {
-        db.collection("settings").document("spin_settings")
+        db.collection("settings").document("daily_spin")
             .addSnapshotListener { snapshot, _ ->
                 if (snapshot != null && snapshot.exists()) {
+                    isEnabled = snapshot.getBoolean("is_enabled") ?: true
                     dailyLimit = snapshot.getLong("daily_limit")?.toInt() ?: 10
                     breakTimeMinutes = snapshot.getLong("break_time")?.toInt() ?: 5
                     rewardAmount = snapshot.getDouble("reward_amount") ?: 0.5
@@ -91,14 +93,16 @@ fun SpinScreen(onBack: () -> Unit) {
     val spinsLeft = dailyLimit - userSpinsCount
 
     Scaffold(
+        containerColor = Color.White,
         topBar = {
             TopAppBar(
-                title = { Text("Lucky Spin", fontWeight = FontWeight.Bold) },
+                title = { Text("Lucky Spin", fontWeight = FontWeight.Bold, color = Color.Black) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.Black)
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
             )
         }
     ) { padding ->
@@ -106,7 +110,7 @@ fun SpinScreen(onBack: () -> Unit) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .background(MaterialTheme.colorScheme.surface),
+                .background(Color.White),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // Stats Row
@@ -150,7 +154,14 @@ fun SpinScreen(onBack: () -> Unit) {
 
             Spacer(modifier = Modifier.height(48.dp))
 
-            if (isRelaxing) {
+            if (!isEnabled) {
+                Text(
+                    text = "This feature is currently disabled.",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.error,
+                    fontWeight = FontWeight.Bold
+                )
+            } else if (isRelaxing) {
                 var countdown by remember { mutableStateOf(timeLeftMs / 1000) }
                 LaunchedEffect(isRelaxing) {
                     while (countdown > 0) {
@@ -171,7 +182,7 @@ fun SpinScreen(onBack: () -> Unit) {
 
             Button(
                 onClick = {
-                    if (!isSpinning && spinsLeft > 0 && !isRelaxing) {
+                    if (!isSpinning && spinsLeft > 0 && !isRelaxing && isEnabled) {
                         isSpinning = true
                         scope.launch {
                             val extraRotation = 360f * 5 + Random.nextInt(360)
@@ -206,11 +217,11 @@ fun SpinScreen(onBack: () -> Unit) {
                     .fillMaxWidth(0.7f)
                     .height(56.dp),
                 shape = RoundedCornerShape(28.dp),
-                enabled = !isSpinning && spinsLeft > 0 && !isRelaxing,
+                enabled = !isSpinning && spinsLeft > 0 && !isRelaxing && isEnabled,
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF673AB7))
             ) {
                 Text(
-                    text = if (isSpinning) "Spinning..." else if (spinsLeft <= 0) "Limit Reached" else "Spin Now",
+                    text = if (!isEnabled) "Disabled" else if (isSpinning) "Spinning..." else if (spinsLeft <= 0) "Limit Reached" else "Spin Now",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
