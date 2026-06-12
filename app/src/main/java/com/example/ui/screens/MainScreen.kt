@@ -842,7 +842,6 @@ fun ProfileScreen(onLogout: () -> Unit) {
     }
 
     var showSettings by remember { mutableStateOf(false) }
-    var showAdminSettings by remember { mutableStateOf(false) }
     var showDailyCheckInFullScreen by remember { mutableStateOf(false) }
     var showReferEarnFullScreen by remember { mutableStateOf(false) }
 
@@ -878,10 +877,6 @@ fun ProfileScreen(onLogout: () -> Unit) {
 
     if (showSettings) {
         com.example.ui.screens.SettingsScreen(onBack = { showSettings = false })
-    }
-
-    if (showAdminSettings) {
-        com.example.ui.screens.AdminSettingsScreen(onBack = { showAdminSettings = false })
     }
 
 
@@ -1014,20 +1009,6 @@ fun ProfileScreen(onLogout: () -> Unit) {
                     iconTint = Color(0xFF1E88E5),
                     onClick = { showEditProfile = true }
                 )
-                
-                // Admin Settings Panel
-                val userEmail = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.email ?: ""
-                val isAdmin = userEmail.lowercase() == "its.me.calloftamim@gmail.com"
-
-                if (isAdmin) {
-                    ProfileListItem(
-                        icon = Icons.Default.Settings,
-                        title = "Admin Panel",
-                        iconBgColor = Color(0xFFE0F7FA),
-                        iconTint = Color(0xFF00ACC1),
-                        onClick = { showAdminSettings = true }
-                    )
-                }
 
                 // 2. Settings
                 ProfileListItem(

@@ -15,6 +15,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Work
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -25,6 +26,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.launch
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.net.Uri
 
 data class MicroJob(
     val id: String = "",
@@ -256,8 +260,14 @@ fun MicroJobDetailsDialog(job: MicroJob, onDismiss: () -> Unit, onTaskSubmitted:
 fun SubmitProofDialog(job: MicroJob, onDismiss: () -> Unit, onSubmit: (String) -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var message by remember { mutableStateOf("") }
-    var screenshotsUploaded by remember { mutableStateOf(0) }
+    var selectedUri by remember { mutableStateOf<Uri?>(null) }
     var isSubmitting by remember { mutableStateOf(false) }
+
+    val launcher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        selectedUri = uri
+    }
     
     Dialog(onDismissRequest = onDismiss) {
         Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
@@ -277,13 +287,25 @@ fun SubmitProofDialog(job: MicroJob, onDismiss: () -> Unit, onSubmit: (String) -
                 Spacer(modifier = Modifier.height(16.dp))
                 
                 Card(
-                    modifier = Modifier.fillMaxWidth().clickable(enabled = !isSubmitting) { screenshotsUploaded++ },
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f))
+                    modifier = Modifier.fillMaxWidth().clickable(enabled = !isSubmitting) {
+                        launcher.launch("image/*")
+                    },
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (selectedUri != null) Color(0xFFE8F5E9) else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                    )
                 ) {
                     Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-                        Icon(Icons.Filled.AddPhotoAlternate, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Icon(
+                            imageVector = if (selectedUri != null) Icons.Filled.CheckCircle else Icons.Filled.AddPhotoAlternate, 
+                            contentDescription = null, 
+                            tint = if (selectedUri != null) Color(0xFF2E7D32) else MaterialTheme.colorScheme.primary
+                        )
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(if (screenshotsUploaded == 0) "Add Screenshots" else "$screenshotsUploaded Screenshots Added", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                        Text(
+                            text = if (selectedUri == null) "Add Screenshot Proof" else "Screenshot Selected!", 
+                            color = if (selectedUri != null) Color(0xFF2E7D32) else MaterialTheme.colorScheme.primary, 
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
                 
@@ -300,29 +322,81 @@ fun SubmitProofDialog(job: MicroJob, onDismiss: () -> Unit, onSubmit: (String) -
                         onClick = {
                             isSubmitting = true
                             val currentUserUid = UserSession.getUid(context)
-                            val data = hashMapOf(
-                                "userId" to currentUserUid,
-                                "jobId" to job.id,
-                                "jobTitle" to job.title,
-                                "reward" to job.reward,
-                                "message" to message,
-                                "screenshotsCount" to screenshotsUploaded,
-                                "status" to "Pending",
-                                "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp()
-                            )
-                            com.google.firebase.firestore.FirebaseFirestore.getInstance()
-                                .collection("micro_job_submissions")
-                                .add(data)
-                                .addOnCompleteListener { task ->
-                                    isSubmitting = false
-                                    if (task.isSuccessful) {
-                                        onSubmit("Proof submitted successfully!")
-                                    } else {
-                                        onSubmit("Failed to submit proof: ${task.exception?.localizedMessage}")
+                            val userEmail = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.email ?: "N/A"
+                            
+                            val caption = """
+                                📝 MICRO JOB PROOF SUBMISSION
+                                💼 Job Title: ${job.title}
+                                💰 Reward: ৳${String.format("%.2f", job.reward)}
+                                👤 Worker: $userEmail
+                                🆔 Worker ID: $currentUserUid
+                                💬 Message: $message
+                            """.trimIndent()
+                            
+                            if (selectedUri != null) {
+                                TelegramUploadHelper.uploadScreenshot(
+                                    context = context,
+                                    imageUri = selectedUri!!,
+                                    caption = caption,
+                                    callback = object : TelegramUploadHelper.UploadCallback {
+                                        override fun onSuccess(fileUrl: String, telegramMessageId: Long) {
+                                            val data = hashMapOf(
+                                                "userId" to currentUserUid,
+                                                "userEmail" to userEmail,
+                                                "jobId" to job.id,
+                                                "jobTitle" to job.title,
+                                                "reward" to job.reward,
+                                                "message" to message,
+                                                "screenshotUrl" to fileUrl,
+                                                "telegramMessageId" to telegramMessageId,
+                                                "status" to "Pending",
+                                                "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+                                            )
+                                            com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                                                .collection("micro_job_submissions")
+                                                .add(data)
+                                                .addOnCompleteListener { task ->
+                                                    isSubmitting = false
+                                                    if (task.isSuccessful) {
+                                                        onSubmit("Proof submitted successfully with screenshot!")
+                                                    } else {
+                                                        onSubmit("Failed to submit proof: ${task.exception?.localizedMessage}")
+                                                    }
+                                                }
+                                        }
+                                        
+                                        override fun onFailure(errorMessage: String) {
+                                            isSubmitting = false
+                                            onSubmit("Telegram upload failed: $errorMessage")
+                                        }
                                     }
-                                }
+                                )
+                            } else {
+                                val data = hashMapOf(
+                                    "userId" to currentUserUid,
+                                    "userEmail" to userEmail,
+                                    "jobId" to job.id,
+                                    "jobTitle" to job.title,
+                                    "reward" to job.reward,
+                                    "message" to message,
+                                    "screenshotUrl" to "",
+                                    "status" to "Pending",
+                                    "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+                                )
+                                com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                                    .collection("micro_job_submissions")
+                                    .add(data)
+                                    .addOnCompleteListener { task ->
+                                        isSubmitting = false
+                                        if (task.isSuccessful) {
+                                            onSubmit("Proof submitted successfully!")
+                                        } else {
+                                            onSubmit("Failed to submit proof: ${task.exception?.localizedMessage}")
+                                        }
+                                    }
+                            }
                         },
-                        enabled = !isSubmitting && (message.isNotBlank() || screenshotsUploaded > 0)
+                        enabled = !isSubmitting && (message.isNotBlank() || selectedUri != null)
                     ) {
                         Text("Submit")
                     }
