@@ -25,6 +25,15 @@ import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.tasks.await
 import java.text.SimpleDateFormat
 import java.util.*
+import android.app.Activity
+import android.widget.Toast
+import com.example.NotificationHelper
+import com.google.android.gms.ads.AdError
+import com.google.android.gms.ads.AdRequest
+import com.google.android.gms.ads.FullScreenContentCallback
+import com.google.android.gms.ads.LoadAdError
+import com.google.android.gms.ads.rewarded.RewardedAd
+import com.google.android.gms.ads.rewarded.RewardedAdLoadCallback
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -41,6 +50,33 @@ fun DailyCheckInScreen(onBack: () -> Unit) {
     var showErrorMessage by remember { mutableStateOf<String?>(null) }
 
     val todayDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+
+    var rewardedAd by remember { mutableStateOf<RewardedAd?>(null) }
+    var isAdLoading by remember { mutableStateOf(false) }
+
+    fun loadAd() {
+        if (rewardedAd != null || isAdLoading) return
+        isAdLoading = true
+        val adRequest = AdRequest.Builder().build()
+        RewardedAd.load(
+            context,
+            "ca-app-pub-4288324218526190/8832383188",
+            adRequest,
+            object : RewardedAdLoadCallback() {
+                override fun onAdFailedToLoad(adError: LoadAdError) {
+                    rewardedAd = null
+                    isAdLoading = false
+                }
+                override fun onAdLoaded(ad: RewardedAd) {
+                    rewardedAd = ad
+                    isAdLoading = false
+                }
+            })
+    }
+
+    LaunchedEffect(Unit) {
+        loadAd()
+    }
 
     DisposableEffect(userId) {
         if (userId.isEmpty()) {
@@ -166,34 +202,66 @@ fun DailyCheckInScreen(onBack: () -> Unit) {
 
             val alreadyCheckedIn = lastCheckInDate == todayDate
 
+            fun proceedToCheckIn() {
+                isCheckingIn = true
+                db.runTransaction { transaction ->
+                    val userRef = db.collection("users").document(userId)
+                    val snapshot = transaction.get(userRef)
+                    
+                    val currentBalance = when (val v = snapshot.get("balance")) {
+                        is Number -> v.toDouble()
+                        is String -> v.toDoubleOrNull() ?: 0.0
+                        else -> 0.0
+                    }
+                    
+                    val claimAmount = if (amount <= 0.0) 2.0 else amount
+                    transaction.update(userRef, "balance", currentBalance + claimAmount)
+                    transaction.update(userRef, "last_checkin_date", todayDate)
+                }.addOnSuccessListener {
+                    isCheckingIn = false
+                    lastCheckInDate = todayDate
+                    val claimAmount = if (amount <= 0.0) 2.0 else amount
+                    showSuccessMessage = "অভিনন্দন! আপনি সফলভাবে ৳$claimAmount পুরস্কার পেয়েছেন।"
+                    
+                    // Show local system notification (works even when app is closed, locked, screen is off, etc.)
+                    NotificationHelper.showNotification(
+                        context = context,
+                        title = "Daily Check-In Reward Claimed! 🎉",
+                        message = "৳$claimAmount successfully added to your wallet balance."
+                    )
+                    
+                    // Show immediate toast message
+                    Toast.makeText(context, "৳$claimAmount আপনার অ্যাকাউন্টে সফলভাবে যোগ করা হয়েছে!", Toast.LENGTH_LONG).show()
+                }.addOnFailureListener {
+                    isCheckingIn = false
+                    showErrorMessage = "ব্যর্থ হয়েছে: ${it.localizedMessage}"
+                }
+            }
+
             if (isCheckingIn) {
                 CircularProgressIndicator()
             } else {
                 Button(
                     onClick = {
                         if (!alreadyCheckedIn) {
-                            isCheckingIn = true
-                            db.runTransaction { transaction ->
-                                val userRef = db.collection("users").document(userId)
-                                val snapshot = transaction.get(userRef)
-                                
-                                val currentBalance = when (val v = snapshot.get("balance")) {
-                                    is Number -> v.toDouble()
-                                    is String -> v.toDoubleOrNull() ?: 0.0
-                                    else -> 0.0
+                            val activity = context as? Activity
+                            if (rewardedAd != null && activity != null) {
+                                isCheckingIn = true
+                                rewardedAd?.fullScreenContentCallback = object : FullScreenContentCallback() {
+                                    override fun onAdDismissedFullScreenContent() {
+                                        rewardedAd = null
+                                        loadAd()
+                                        proceedToCheckIn()
+                                    }
+                                    override fun onAdFailedToShowFullScreenContent(adError: AdError) {
+                                        rewardedAd = null
+                                        loadAd()
+                                        proceedToCheckIn()
+                                    }
                                 }
-                                
-                                val claimAmount = if (amount <= 0.0) 2.0 else amount
-                                transaction.update(userRef, "balance", currentBalance + claimAmount)
-                                transaction.update(userRef, "last_checkin_date", todayDate)
-                            }.addOnSuccessListener {
-                                isCheckingIn = false
-                                lastCheckInDate = todayDate
-                                val claimAmount = if (amount <= 0.0) 2.0 else amount
-                                showSuccessMessage = "অভিনন্দন! আপনি সফলভাবে ৳$claimAmount পুরস্কার পেয়েছেন।"
-                            }.addOnFailureListener {
-                                isCheckingIn = false
-                                showErrorMessage = "ব্যর্থ হয়েছে: ${it.localizedMessage}"
+                                rewardedAd?.show(activity) { _ -> }
+                            } else {
+                                proceedToCheckIn()
                             }
                         }
                     },
