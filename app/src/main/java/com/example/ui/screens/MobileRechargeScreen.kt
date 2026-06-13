@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -605,6 +606,7 @@ fun RechargeHistoryDialog(onDismiss: () -> Unit, context: Context) {
         Surface(modifier = Modifier.fillMaxSize(), color = Color.White) {
             var historyList by remember { mutableStateOf<List<Map<String, Any>>>(emptyList()) }
             var isLoadingHistory by remember { mutableStateOf(true) }
+            var selectedIds by remember { mutableStateOf(setOf<String>()) }
             val currentUserUid = UserSession.getUid(context)
 
             DisposableEffect(currentUserUid) {
@@ -630,9 +632,38 @@ fun RechargeHistoryDialog(onDismiss: () -> Unit, context: Context) {
 
             Column(modifier = Modifier.fillMaxSize()) {
                 TopAppBar(
-                    title = { Text("Recharge History", color = Color.White) },
+                    title = { 
+                        if (selectedIds.isNotEmpty()) {
+                            Text("${selectedIds.size} Selected", color = Color.White)
+                        } else {
+                            Text("Recharge History", color = Color.White)
+                        }
+                    },
                     navigationIcon = {
-                        IconButton(onClick = onDismiss) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White) }
+                        if (selectedIds.isNotEmpty()) {
+                            IconButton(onClick = { selectedIds = emptySet() }) { Icon(Icons.Filled.Clear, contentDescription = "Clear", tint = Color.White) }
+                        } else {
+                            IconButton(onClick = onDismiss) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White) }
+                        }
+                    },
+                    actions = {
+                        if (selectedIds.isNotEmpty()) {
+                            IconButton(onClick = {
+                                val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                                val batch = db.batch()
+                                selectedIds.forEach { id ->
+                                    batch.delete(db.collection("recharge_requests").document(id))
+                                }
+                                batch.commit()
+                                selectedIds = emptySet()
+                            }) {
+                                Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = Color.White)
+                            }
+                        } else if (historyList.isNotEmpty()) {
+                            TextButton(onClick = { selectedIds = historyList.mapNotNull { it["id"] as? String }.toSet() }) {
+                                Text("Select All", color = Color.White)
+                            }
+                        }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFFD81B60))
                 )
@@ -657,25 +688,69 @@ fun RechargeHistoryDialog(onDismiss: () -> Unit, context: Context) {
                                 java.text.SimpleDateFormat("dd MMM, hh:mm a", java.util.Locale.getDefault()).format(it)
                             } ?: ""
 
+                            val itemId = item["id"] as? String ?: ""
+                            val isSelected = selectedIds.contains(itemId)
+
                             Card(
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F5)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp)
+                                    .clickable {
+                                        if (selectedIds.isNotEmpty()) {
+                                            selectedIds = if (isSelected) selectedIds - itemId else selectedIds + itemId
+                                        }
+                                    },
+                                colors = CardDefaults.cardColors(containerColor = if (isSelected) Color(0xFFFFCDD2) else Color(0xFFF5F5F5)),
                                 shape = RoundedCornerShape(8.dp)
                             ) {
-                                Row(modifier = Modifier.padding(16.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                    Column {
-                                        Text(operator, fontWeight = FontWeight.Bold)
-                                        Text(phone, style = MaterialTheme.typography.bodySmall)
-                                        Text(dateStr, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
-                                    }
-                                    Column(horizontalAlignment = Alignment.End) {
-                                        Text("৳$amt", fontWeight = FontWeight.Bold, color = Color(0xFFD81B60))
-                                        val statusColor = when (status.lowercase()) {
-                                            "pending" -> Color(0xFFFF9800)
-                                            "approved", "success" -> Color(0xFF4CAF50)
-                                            else -> Color.Red
+                                Row(
+                                    modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        if (selectedIds.isNotEmpty()) {
+                                            androidx.compose.material3.Checkbox(
+                                                checked = isSelected,
+                                                onCheckedChange = { checked ->
+                                                    selectedIds = if (checked) selectedIds + itemId else selectedIds - itemId
+                                                },
+                                                modifier = Modifier.padding(end = 8.dp)
+                                            )
                                         }
-                                        Text(status.replaceFirstChar { it.uppercase() }, color = statusColor, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                                        Column {
+                                            Text(operator, fontWeight = FontWeight.Bold)
+                                            Text(phone, style = MaterialTheme.typography.bodySmall)
+                                            Text(dateStr, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                                        }
+                                    }
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Column(horizontalAlignment = Alignment.End) {
+                                            Text("৳$amt", fontWeight = FontWeight.Bold, color = Color(0xFFD81B60))
+                                            val statusColor = when (status.lowercase()) {
+                                                "pending" -> Color(0xFFFF9800)
+                                                "approved", "success" -> Color(0xFF4CAF50)
+                                                else -> Color.Red
+                                            }
+                                            Text(
+                                                status.replaceFirstChar { it.uppercase() },
+                                                color = statusColor,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                        if (selectedIds.isEmpty()) {
+                                            IconButton(onClick = {
+                                                if (itemId.isNotBlank()) {
+                                                    com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                                                        .collection("recharge_requests")
+                                                        .document(itemId)
+                                                        .delete()
+                                                }
+                                            }) {
+                                                Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = Color.Gray)
+                                            }
+                                        }
                                     }
                                 }
                             }

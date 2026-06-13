@@ -254,7 +254,12 @@ fun HomeScreen(onLogout: () -> Unit = {}) {
                             }
                         }.map { it.first }
                         
-                        firebaseBanners = sortedBanners
+                        val staticBanner = Banner(
+                            imageUrl = "https://res.cloudinary.com/dhlzcea1t/image/upload/v1781359431/hnbmqnc03i5jf9egcbjh.png",
+                            targetUrl = "",
+                            isActive = true
+                        )
+                        firebaseBanners = listOf(staticBanner) + sortedBanners
                     }
                 }
 
