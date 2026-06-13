@@ -137,6 +137,24 @@ fun HomeScreen(onLogout: () -> Unit = {}) {
     var showWatchTimeScreen by remember { mutableStateOf(false) }
     
     var unreadNotificationsCount by remember { mutableStateOf(0) }
+    
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val currentUserUid = com.example.ui.screens.UserSession.getUid(context)
+
+    LaunchedEffect(com.example.NotificationNavigationState.shouldOpenNotificationsPage) {
+        if (com.example.NotificationNavigationState.shouldOpenNotificationsPage) {
+            showNotifications = true
+            com.example.NotificationNavigationState.shouldOpenNotificationsPage = false
+        }
+    }
+
+    LaunchedEffect(showNotifications, currentUserUid) {
+        if (currentUserUid.isNotBlank()) {
+            val localNotifs = com.example.LocalNotificationManager.getNotifications(context, currentUserUid)
+            unreadNotificationsCount = localNotifs.count { !it.isRead }
+        }
+    }
+    
     var firebaseBanners by remember { mutableStateOf<List<Banner>>(emptyList()) }
     var dailyCheckInEnabled by remember { mutableStateOf(true) }
     
@@ -153,9 +171,6 @@ fun HomeScreen(onLogout: () -> Unit = {}) {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
     
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val currentUserUid = UserSession.getUid(context)
-
     androidx.compose.runtime.DisposableEffect(currentUserUid) {
         if (currentUserUid.isBlank()) {
             onDispose {}
@@ -173,15 +188,7 @@ fun HomeScreen(onLogout: () -> Unit = {}) {
                     }
                 }
             
-            val notifListener = db.collection("notifications")
-                .whereEqualTo("userId", currentUserUid)
-                .whereEqualTo("isRead", false)
-                .addSnapshotListener { snapshot, error ->
-                    if (snapshot != null) {
-                        unreadNotificationsCount = snapshot.size()
-                    }
-                }
-                
+            
             val bannerListener = db.collection("banners")
                 .whereEqualTo("isActive", true)
                 .addSnapshotListener { snapshot, error ->
@@ -267,7 +274,6 @@ fun HomeScreen(onLogout: () -> Unit = {}) {
                 
             onDispose {
                 userListener.remove()
-                notifListener.remove()
                 bannerListener.remove()
                 checkInListener.remove()
                 checkInListener2.remove()

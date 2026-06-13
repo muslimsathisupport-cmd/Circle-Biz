@@ -728,26 +728,21 @@ fun DepositDialog(onDismiss: () -> Unit, onSubmitted: (Double, String) -> Unit) 
                                     "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
                                     "createdAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
                                 )
-                                val notificationDoc = db.collection("notifications").document()
-                                val notificationData = hashMapOf(
-                                    "id" to notificationDoc.id,
-                                    "userId" to currentUserUid,
-                                    "title" to "Deposit Submitted",
-                                    "message" to "Your deposit of ৳${String.format("%.2f", reqAmount)} via $selectedMethod is pending approval.",
-                                    "type" to "INFO",
-                                    "isRead" to false,
-                                    "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp()
-                                )
-                                db.runBatch { batch ->
-                                    batch.set(depositDoc, depositData)
-                                    batch.set(notificationDoc, notificationData)
-                                }.addOnCompleteListener { task ->
-                                    isSubmitting = false
-                                    if (task.isSuccessful) {
-                                        onSubmitted(reqAmount, selectedMethod)
-                                        onDismiss()
+                                db.collection("deposits").document(depositId).set(depositData)
+                                    .addOnCompleteListener { task ->
+                                        isSubmitting = false
+                                        if (task.isSuccessful) {
+                                            // Send local push notification (free, background & lockscreen supported)
+                                            com.example.NotificationHelper.showNotification(
+                                                context = context,
+                                                title = "Deposit Request Submitted",
+                                                message = "Your deposit request has been submitted. Please wait for admin approval.",
+                                                type = com.example.ui.screens.NotificationType.INFO
+                                            )
+                                            onSubmitted(reqAmount, selectedMethod)
+                                            onDismiss()
+                                        }
                                     }
-                                }
                             }
                         },
                         modifier = Modifier.fillMaxWidth().height(56.dp),
@@ -951,16 +946,6 @@ fun WithdrawDialog(availableBalance: Double, onDismiss: () -> Unit, onSubmitted:
                                     "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
                                     "createdAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
                                 )
-                                val notificationDoc = db.collection("notifications").document()
-                                val notificationData = hashMapOf(
-                                    "id" to notificationDoc.id,
-                                    "userId" to currentUserUid,
-                                    "title" to "Withdrawal Submitted",
-                                    "message" to "Your withdrawal request of ৳${String.format("%.2f", reqAmount)} via $selectedMethod has been submitted successfully. Waiting for admin approval.",
-                                    "type" to "INFO",
-                                    "isRead" to false,
-                                    "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp()
-                                )
                                 db.runTransaction { transaction ->
                                     val userRef = db.collection("users").document(currentUserUid)
                                     val userSnap = transaction.get(userRef)
@@ -975,13 +960,19 @@ fun WithdrawDialog(availableBalance: Double, onDismiss: () -> Unit, onSubmitted:
                                         val newWithdrawData = withdrawData.toMutableMap()
                                         newWithdrawData["amount_deducted"] = true
                                         transaction.set(withdrawDoc, newWithdrawData)
-                                        transaction.set(notificationDoc, notificationData)
                                     } else {
                                         throw Exception("Insufficient balance")
                                     }
                                 }.addOnCompleteListener { task ->
                                     isSubmitting = false
                                     if (task.isSuccessful) {
+                                        // Send local push notification (free, background & lockscreen supported)
+                                        com.example.NotificationHelper.showNotification(
+                                            context = context,
+                                            title = "Withdrawal Request Submitted",
+                                            message = "Your withdrawal request has been submitted successfully. Please wait for admin approval.",
+                                            type = com.example.ui.screens.NotificationType.INFO
+                                        )
                                         onSubmitted(reqAmount, selectedMethod)
                                         onDismiss()
                                     } else {

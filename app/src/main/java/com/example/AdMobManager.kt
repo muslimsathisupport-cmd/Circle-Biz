@@ -12,6 +12,7 @@ import com.google.android.gms.ads.AdError
 
 object AdMobManager {
     private var rewardedAd: RewardedAd? = null
+    private var spinRewardedAd: RewardedAd? = null
 
     fun loadRewardedAd(context: Context) {
         if (rewardedAd != null) return
@@ -66,6 +67,63 @@ object AdMobManager {
             }
         } else {
             Log.d("AdMob", "The rewarded ad wasn't ready yet.")
+            onAdDismissed() // Fallback if ad isn't loaded
+        }
+    }
+
+    fun loadSpinRewardedAd(context: Context) {
+        if (spinRewardedAd != null) return
+
+        val adRequest = AdRequest.Builder().build()
+        RewardedAd.load(
+            context,
+            "ca-app-pub-4288324218526190/1290229653",
+            adRequest,
+            object : RewardedAdLoadCallback() {
+                override fun onAdFailedToLoad(adError: LoadAdError) {
+                    Log.d("AdMob", "Spin Ad failed to load: ${adError.message}")
+                    spinRewardedAd = null
+                }
+
+                override fun onAdLoaded(ad: RewardedAd) {
+                    Log.d("AdMob", "Spin Ad was loaded.")
+                    spinRewardedAd = ad
+                }
+            })
+    }
+
+    fun showSpinRewardedAd(activity: Activity, onRewardEarned: () -> Unit, onAdDismissed: () -> Unit) {
+        if (spinRewardedAd != null) {
+            var rewardEarned = false
+            spinRewardedAd?.fullScreenContentCallback = object : FullScreenContentCallback() {
+                override fun onAdDismissedFullScreenContent() {
+                    Log.d("AdMob", "Spin Ad was dismissed.")
+                    spinRewardedAd = null
+                    loadSpinRewardedAd(activity) // Preload next spin ad
+                    if (rewardEarned) {
+                        onRewardEarned()
+                    } else {
+                        onAdDismissed()
+                    }
+                }
+
+                override fun onAdFailedToShowFullScreenContent(adError: AdError) {
+                    Log.d("AdMob", "Spin Ad failed to show: ${adError.message}")
+                    spinRewardedAd = null
+                    onAdDismissed()
+                }
+
+                override fun onAdShowedFullScreenContent() {
+                    Log.d("AdMob", "Spin Ad showed fullscreen content.")
+                }
+            }
+
+            spinRewardedAd?.show(activity) { rewardItem ->
+                Log.d("AdMob", "User earned spin reward.")
+                rewardEarned = true
+            }
+        } else {
+            Log.d("AdMob", "The spin rewarded ad wasn't ready yet.")
             onAdDismissed() // Fallback if ad isn't loaded
         }
     }

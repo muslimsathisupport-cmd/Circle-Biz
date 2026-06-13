@@ -417,18 +417,14 @@ fun ProfileScreen(onLogout: () -> Unit) {
                                     tx.update(userRef, "balance", currentBal + amount)
                                     tx.update(doc.reference, "processed_for_balance", true)
                                     tx.update(doc.reference, "claimed_at", com.google.firebase.firestore.FieldValue.serverTimestamp())
-                                    
-                                    val newNotifRef = db.collection("notifications").document()
-                                    val notifMap = hashMapOf(
-                                        "id" to newNotifRef.id,
-                                        "userId" to currentUserUid,
-                                        "title" to "ডিপোজিট অ্যাপ্রুভ হয়েছে! ✅",
-                                        "message" to "আপনার ৳$amount ডিপোজিট রিকোয়েস্ট অ্যাপ্রুভ করা হয়েছে এবং ব্যালেন্স আপনার অ্যাকাউন্টে যোগ করা হয়েছে।",
-                                        "timestamp" to System.currentTimeMillis(),
-                                        "isRead" to false,
-                                        "type" to "SUCCESS"
+                                }.addOnSuccessListener {
+                                    // Send local push notification
+                                    com.example.NotificationHelper.showNotification(
+                                        context = context,
+                                        title = "ডিপোজিট অ্যাপ্রুভ হয়েছে! ✅",
+                                        message = "আপনার ৳$amount ডিপোজিট রিকোয়েস্ট অ্যাপ্রুভ করা হয়েছে এবং ব্যালেন্স আপনার অ্যাকাউন্টে যোগ করা হয়েছে।",
+                                        type = com.example.ui.screens.NotificationType.SUCCESS
                                     )
-                                    tx.set(newNotifRef, notifMap)
                                 }.addOnFailureListener { err ->
                                     val userRef = db.collection("users").document(currentUserUid)
                                     userRef.get().addOnSuccessListener { userSnap ->
@@ -442,17 +438,13 @@ fun ProfileScreen(onLogout: () -> Unit) {
                                                 "processed_for_balance", true,
                                                 "claimed_at", com.google.firebase.firestore.FieldValue.serverTimestamp()
                                             )
-                                            val newNotifRef = db.collection("notifications").document()
-                                            val notifMap = hashMapOf(
-                                                "id" to newNotifRef.id,
-                                                "userId" to currentUserUid,
-                                                "title" to "ডিপোজিট অ্যাপ্রুভ হয়েছে! ✅",
-                                                "message" to "আপনার ৳$amount ডিপোজিট রিকোয়েস্ট অ্যাপ্রুভ করা হয়েছে এবং ব্যালেন্স আপনার অ্যাকাউন্টে যোগ করা হয়েছে।",
-                                                "timestamp" to System.currentTimeMillis(),
-                                                "isRead" to false,
-                                                "type" to "SUCCESS"
+                                            // Send local push notification
+                                            com.example.NotificationHelper.showNotification(
+                                                context = context,
+                                                title = "ডিপোজিট অ্যাপ্রুভ হয়েছে! ✅",
+                                                message = "আপনার ৳$amount ডিপোজিট রিকোয়েস্ট অ্যাপ্রুভ করা হয়েছে এবং ব্যালেন্স আপনার অ্যাকাউন্টে যোগ করা হয়েছে।",
+                                                type = com.example.ui.screens.NotificationType.SUCCESS
                                             )
-                                            newNotifRef.set(notifMap)
                                         }
                                     }
                                 }
@@ -485,18 +477,14 @@ fun ProfileScreen(onLogout: () -> Unit) {
                                     tx.update(userRef, "balance", currentBal + amount)
                                     tx.update(doc.reference, "processed_for_balance", true)
                                     tx.update(doc.reference, "claimed_at", com.google.firebase.firestore.FieldValue.serverTimestamp())
-                                    
-                                    val newNotifRef = db.collection("notifications").document()
-                                    val notifMap = hashMapOf(
-                                        "id" to newNotifRef.id,
-                                        "userId" to currentUserUid,
-                                        "title" to "উইথড্র রিকোয়েস্ট বাতিল হয়েছে! ❌",
-                                        "message" to "আপনার ৳$amount উইথড্র রিকোয়েস্টটি বাতিল করা হয়েছে এবং টাকা আপনার ব্যালেন্সে ফেরত দেওয়া হয়েছে।",
-                                        "timestamp" to System.currentTimeMillis(),
-                                        "isRead" to false,
-                                        "type" to "ERROR"
+                                }.addOnSuccessListener {
+                                    // Send local push notification
+                                    com.example.NotificationHelper.showNotification(
+                                        context = context,
+                                        title = "উইথড্র রিকোয়েস্ট বাতিল হয়েছে! ❌",
+                                        message = "আপনার ৳$amount উইথড্র রিকোয়েস্টটি বাতিল করা হয়েছে এবং টাকা আপনার ব্যালেন্সে ফেরত দেওয়া হয়েছে।",
+                                        type = com.example.ui.screens.NotificationType.ERROR
                                     )
-                                    tx.set(newNotifRef, notifMap)
                                 }.addOnFailureListener { err ->
                                     val userRef = db.collection("users").document(currentUserUid)
                                     userRef.get().addOnSuccessListener { userSnap ->
@@ -510,17 +498,13 @@ fun ProfileScreen(onLogout: () -> Unit) {
                                                 "processed_for_balance", true,
                                                 "claimed_at", com.google.firebase.firestore.FieldValue.serverTimestamp()
                                             )
-                                            val newNotifRef = db.collection("notifications").document()
-                                            val notifMap = hashMapOf(
-                                                "id" to newNotifRef.id,
-                                                "userId" to currentUserUid,
-                                                "title" to "উইথড্র রিকোয়েস্ট বাতিল হয়েছে! ❌",
-                                                "message" to "আপনার ৳$amount উইথড্র রিকোয়েস্টটি বাতিল করা হয়েছে এবং টাকা আপনার ব্যালেন্সে ফেরত দেওয়া হয়েছে।",
-                                                "timestamp" to System.currentTimeMillis(),
-                                                "isRead" to false,
-                                                "type" to "ERROR"
+                                            // Send local push notification
+                                            com.example.NotificationHelper.showNotification(
+                                                context = context,
+                                                title = "উইথড্র রিকোয়েস্ট বাতিল হয়েছে! ❌",
+                                                message = "আপনার ৳$amount উইথড্র রিকোয়েস্টটি বাতিল করা হয়েছে এবং টাকা আপনার ব্যালেন্সে ফেরত দেওয়া হয়েছে।",
+                                                type = com.example.ui.screens.NotificationType.ERROR
                                             )
-                                            newNotifRef.set(notifMap)
                                         }
                                     }
                                 }
@@ -543,30 +527,23 @@ fun ProfileScreen(onLogout: () -> Unit) {
                             }
                             db.runTransaction { tx ->
                                 tx.update(doc.reference, "processed_for_approval_notification", true)
-                                val newNotifRef = db.collection("notifications").document()
-                                val notifMap = hashMapOf(
-                                    "id" to newNotifRef.id,
-                                    "userId" to currentUserUid,
-                                    "title" to "উইথড্র সফল হয়েছে! 🎁",
-                                    "message" to "আপনার ৳$amount উইথড্র রিকোয়েস্টটি সফলভাবে সম্পন্ন হয়েছে।",
-                                    "timestamp" to System.currentTimeMillis(),
-                                    "isRead" to false,
-                                    "type" to "SUCCESS"
+                            }.addOnSuccessListener {
+                                // Send local push notification
+                                com.example.NotificationHelper.showNotification(
+                                    context = context,
+                                    title = "উইথড্র সফল হয়েছে! 🎁",
+                                    message = "আপনার ৳$amount উইথড্র রিকোয়েস্টটি সফলভাবে সম্পন্ন হয়েছে।",
+                                    type = com.example.ui.screens.NotificationType.SUCCESS
                                 )
-                                tx.set(newNotifRef, notifMap)
                             }.addOnFailureListener {
                                 doc.reference.update("processed_for_approval_notification", true).addOnSuccessListener {
-                                    val newNotifRef = db.collection("notifications").document()
-                                    val notifMap = hashMapOf(
-                                        "id" to newNotifRef.id,
-                                        "userId" to currentUserUid,
-                                        "title" to "উইথড্র সফল হয়েছে! 🎁",
-                                        "message" to "আপনার ৳$amount উইথড্র রিকোয়েস্টটি সফলভাবে সম্পন্ন হয়েছে।",
-                                        "timestamp" to System.currentTimeMillis(),
-                                        "isRead" to false,
-                                        "type" to "SUCCESS"
+                                    // Send local push notification
+                                    com.example.NotificationHelper.showNotification(
+                                        context = context,
+                                        title = "উইথড্র সফল হয়েছে! 🎁",
+                                        message = "আপনার ৳$amount উইথড্র রিকোয়েস্টটি সফলভাবে সম্পন্ন হয়েছে।",
+                                        type = com.example.ui.screens.NotificationType.SUCCESS
                                     )
-                                    newNotifRef.set(notifMap)
                                 }
                             }
                         }

@@ -66,8 +66,9 @@ fun SpinScreen(onBack: () -> Unit) {
     val auth = FirebaseAuth.getInstance()
     val userId = auth.currentUser?.uid ?: ""
     val scope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
 
-    var dailyLimit by remember { mutableIntStateOf(10) }
+    var dailyLimit by remember { mutableIntStateOf(6) }
     var breakTimeMinutes by remember { mutableIntStateOf(5) }
     var isEnabled by remember { mutableStateOf(true) }
     
@@ -75,19 +76,27 @@ fun SpinScreen(onBack: () -> Unit) {
     var lastSpinTime by remember { mutableLongStateOf(0L) }
     var userBalance by remember { mutableDoubleStateOf(0.0) }
     
+    var spinsSinceAd by remember { mutableIntStateOf(0) }
+    var pendingSpinRewards by remember { mutableDoubleStateOf(0.0) }
+    
     var isSpinning by remember { mutableStateOf(false) }
     var rotationAngle by remember { mutableStateOf(0f) }
     var showRewardDialog by remember { mutableStateOf(false) }
     var earnedReward by remember { mutableDoubleStateOf(0.0) }
     var isSavingReward by remember { mutableStateOf(false) }
     
+    // Preload Rewarded Ad for Spin category
+    LaunchedEffect(Unit) {
+        com.example.AdMobManager.loadSpinRewardedAd(context)
+    }
+
     // Listen to admin settings
     LaunchedEffect(Unit) {
         db.collection("settings").document("daily_spin")
             .addSnapshotListener { snapshot, _ ->
                 if (snapshot != null && snapshot.exists()) {
                     isEnabled = snapshot.getBoolean("is_enabled") ?: true
-                    dailyLimit = snapshot.getLong("daily_limit")?.toInt() ?: 10
+                    dailyLimit = snapshot.getLong("daily_limit")?.toInt() ?: 6
                     breakTimeMinutes = snapshot.getLong("break_time")?.toInt() ?: 5
                 }
             }
@@ -107,8 +116,13 @@ fun SpinScreen(onBack: () -> Unit) {
                         if (lastDate != currentDate) {
                             db.collection("users").document(userId).update(
                                 "daily_spins_count", 0,
+                                "spins_since_ad", 0,
+                                "pending_spin_rewards", 0.0,
                                 "last_spin_date", currentDate
                             )
+                        } else {
+                            spinsSinceAd = snapshot.getLong("spins_since_ad")?.toInt() ?: 0
+                            pendingSpinRewards = snapshot.getDouble("pending_spin_rewards") ?: 0.0
                         }
                     }
                 }
@@ -151,12 +165,62 @@ fun SpinScreen(onBack: () -> Unit) {
                 StatCard("Spins Left", spinsLeft.toString(), Color(0xFF2196F3))
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            // Grouping Block Progress UI
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth(0.9f)
+                    .padding(vertical = 8.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFF3E5F5))
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "Spin Group Progress (৩টি স্পিনের গ্রুপ)",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF673AB7)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        for (i in 1..3) {
+                            val activeState = i <= spinsSinceAd
+                            Box(
+                                modifier = Modifier
+                                    .size(24.dp)
+                                    .clip(CircleShape)
+                                    .background(if (activeState) Color(0xFF673AB7) else Color.LightGray),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "$i",
+                                    color = Color.White,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "Pending Group Reward: ৳${String.format("%.2f", pendingSpinRewards)}",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFE91E63)
+                    )
+                }
+            }
 
             // Spin Wheel Container
             Box(
                 modifier = Modifier
-                    .size(300.dp)
+                    .size(280.dp)
                     .padding(8.dp),
                 contentAlignment = Alignment.Center
             ) {
@@ -179,7 +243,7 @@ fun SpinScreen(onBack: () -> Unit) {
                 }
             }
 
-            Spacer(modifier = Modifier.height(48.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
             if (!isEnabled) {
                 Text(
@@ -207,70 +271,133 @@ fun SpinScreen(onBack: () -> Unit) {
 
             Spacer(modifier = Modifier.height(16.dp))
 
+            val claimMode = spinsSinceAd >= 3 || (spinsLeft <= 0 && spinsSinceAd > 0)
+
             Button(
                 onClick = {
-                    if (!isSpinning && spinsLeft > 0 && !isRelaxing && isEnabled && !isSavingReward) {
-                        isSpinning = true
-                        isSavingReward = true
-                        scope.launch {
-                            val targetIndex = rollSpin()
-                            val sweepAngle = 360f / spinRewards.size
-                            val segmentCenterAngle = targetIndex * sweepAngle + sweepAngle / 2f
+                    if (claimMode) {
+                        val activity = context as? android.app.Activity
+                        if (activity != null) {
+                            isSavingReward = true
+                            android.widget.Toast.makeText(context, "বিজ্ঞাপন লোড হচ্ছে,অনুগ্রহ করে অপেক্ষা করুন...", android.widget.Toast.LENGTH_SHORT).show()
                             
-                            var targetRot = 270f - segmentCenterAngle
-                            targetRot = (targetRot % 360f + 360f) % 360f
-                            
-                            val normalizeCurrentRot = (rotationAngle % 360f + 360f) % 360f
-                            var rotationDiff = targetRot - normalizeCurrentRot
-                            if (rotationDiff < 0) rotationDiff += 360f
-                            
-                            val extraRotation = 360f * 5 + rotationDiff
-
-                            animate(
-                                initialValue = rotationAngle,
-                                targetValue = rotationAngle + extraRotation,
-                                animationSpec = tween(durationMillis = 3500, easing = FastOutSlowInEasing)
-                            ) { value, _ ->
-                                rotationAngle = value
-                            }
-                            
-                            isSpinning = false
-                            earnedReward = spinRewards[targetIndex].second
-                            
-                            // Update Firestore
-                            db.runTransaction { transaction ->
-                                val userDoc = db.collection("users").document(userId)
-                                val snapshot = transaction.get(userDoc)
-                                val currentBal = snapshot.getDouble("balance") ?: 0.0
-                                val currentCount = snapshot.getLong("daily_spins_count")?.toInt() ?: 0
+                            com.example.AdMobManager.showSpinRewardedAd(
+                                activity = activity,
+                                onRewardEarned = {
+                                    db.runTransaction { transaction ->
+                                        val userDoc = db.collection("users").document(userId)
+                                        val snap = transaction.get(userDoc)
+                                        val currentBal = snap.getDouble("balance") ?: 0.0
+                                        val pendingAmt = snap.getDouble("pending_spin_rewards") ?: 0.0
+                                        
+                                        transaction.update(userDoc, "balance", currentBal + pendingAmt)
+                                        transaction.update(userDoc, "pending_spin_rewards", 0.0)
+                                        transaction.update(userDoc, "spins_since_ad", 0)
+                                        transaction.update(userDoc, "last_spin_timestamp", System.currentTimeMillis())
+                                    }.addOnSuccessListener {
+                                        isSavingReward = false
+                                        android.widget.Toast.makeText(
+                                            context,
+                                            "সফলভাবে ৳${String.format("%.2f", pendingSpinRewards)} আপনার ব্যালেন্সে যোগ করা হয়েছে!",
+                                            android.widget.Toast.LENGTH_LONG
+                                        ).show()
+                                        
+                                        com.example.NotificationHelper.showNotification(
+                                            context = context,
+                                            title = "স্পিন বোনাস ওয়ালেটে যোগ হয়েছে! 🎉",
+                                            message = "৳${String.format("%.2f", pendingSpinRewards)} আপনার ওয়ালেট ব্যালেন্সে সফলভাবে যোগ করা হয়েছে।",
+                                            type = com.example.ui.screens.NotificationType.SUCCESS
+                                        )
+                                    }.addOnFailureListener { err ->
+                                        isSavingReward = false
+                                        android.widget.Toast.makeText(context, "ব্যর্থ হয়েছে: ${err.localizedMessage}", android.widget.Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                onAdDismissed = {
+                                    isSavingReward = false
+                                    android.widget.Toast.makeText(context, "রিওয়ার্ড বোনাস পেতে সম্পূর্ণ ভিডিও বিজ্ঞাপনটি দেখতে হবে!", android.widget.Toast.LENGTH_LONG).show()
+                                }
+                            )
+                        }
+                    } else {
+                        if (!isSpinning && spinsLeft > 0 && !isRelaxing && isEnabled && !isSavingReward) {
+                            isSpinning = true
+                            isSavingReward = true
+                            scope.launch {
+                                val targetIndex = rollSpin()
+                                val sweepAngle = 360f / spinRewards.size
+                                val segmentCenterAngle = targetIndex * sweepAngle + sweepAngle / 2f
                                 
-                                transaction.update(userDoc, "balance", currentBal + earnedReward)
-                                transaction.update(userDoc, "daily_spins_count", currentCount + 1)
-                                transaction.update(userDoc, "last_spin_timestamp", System.currentTimeMillis())
-                            }.addOnSuccessListener {
-                                isSavingReward = false
-                                showRewardDialog = true
-                            }.addOnFailureListener {
-                                isSavingReward = false
+                                var targetRot = 270f - segmentCenterAngle
+                                targetRot = (targetRot % 360f + 360f) % 360f
+                                
+                                val normalizeCurrentRot = (rotationAngle % 360f + 360f) % 360f
+                                var rotationDiff = targetRot - normalizeCurrentRot
+                                if (rotationDiff < 0) rotationDiff += 360f
+                                
+                                val extraRotation = 360f * 5 + rotationDiff
+
+                                animate(
+                                    initialValue = rotationAngle,
+                                    targetValue = rotationAngle + extraRotation,
+                                    animationSpec = tween(durationMillis = 3500, easing = FastOutSlowInEasing)
+                                ) { value, _ ->
+                                    rotationAngle = value
+                                }
+                                
+                                isSpinning = false
+                                val localEarnedReward = spinRewards[targetIndex].second
+                                earnedReward = localEarnedReward
+                                
+                                // Update Firestore
+                                db.runTransaction { transaction ->
+                                    val userDoc = db.collection("users").document(userId)
+                                    val snapshot = transaction.get(userDoc)
+                                    val currentCount = snapshot.getLong("daily_spins_count")?.toInt() ?: 0
+                                    val currentSpinsSinceAd = snapshot.getLong("spins_since_ad")?.toInt() ?: 0
+                                    val currentPendingRewards = snapshot.getDouble("pending_spin_rewards") ?: 0.0
+                                    
+                                    transaction.update(userDoc, "daily_spins_count", currentCount + 1)
+                                    transaction.update(userDoc, "spins_since_ad", currentSpinsSinceAd + 1)
+                                    transaction.update(userDoc, "pending_spin_rewards", currentPendingRewards + localEarnedReward)
+                                }.addOnSuccessListener {
+                                    isSavingReward = false
+                                    showRewardDialog = true
+                                }.addOnFailureListener {
+                                    isSavingReward = false
+                                    android.widget.Toast.makeText(context, "রেকর্ড সেভ করতে ব্যর্থ হয়েছে", android.widget.Toast.LENGTH_SHORT).show()
+                                }
                             }
                         }
                     }
                 },
                 modifier = Modifier
-                    .fillMaxWidth(0.7f)
+                    .fillMaxWidth(0.85f)
                     .height(56.dp),
                 shape = RoundedCornerShape(28.dp),
-                enabled = !isSpinning && spinsLeft > 0 && !isRelaxing && isEnabled && !isSavingReward,
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF673AB7))
+                enabled = claimMode || (!isSpinning && spinsLeft > 0 && !isRelaxing && isEnabled && !isSavingReward),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (claimMode) Color(0xFF4CAF50) else Color(0xFF673AB7)
+                )
             ) {
                 Text(
-                    text = if (!isEnabled) "Disabled" else if (isSpinning || isSavingReward) "Spinning..." else if (spinsLeft <= 0) "Limit Reached" else "Spin Now",
+                    text = if (claimMode) {
+                        "Claim ৳${String.format("%.2f", pendingSpinRewards)} Reward (অ্যাড দেখুন)"
+                    } else if (!isEnabled) {
+                        "Disabled"
+                    } else if (isSpinning || isSavingReward) {
+                        "Spinning..."
+                    } else if (spinsLeft <= 0) {
+                        "Limit Reached"
+                    } else {
+                        "Spin Now (স্পিন করুন)"
+                    },
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
             }
             
-            if (spinsLeft <= 0) {
+            if (spinsLeft <= 0 && !claimMode) {
                 Text(
                     text = "You've reached your daily limit. Come back tomorrow!",
                     color = Color.Gray,
@@ -291,7 +418,12 @@ fun SpinScreen(onBack: () -> Unit) {
                 }
             },
             title = { Text("Congratulations!") },
-            text = { Text("You've earned ৳${String.format("%.2f", earnedReward)} from your spin!") },
+            text = { 
+                Text(
+                    "You've earned ৳${String.format("%.2f", earnedReward)} from your spin!\n\n" +
+                    "এটি আপনার পেন্ডিং গ্রুপে যোগ হয়েছে। ৩টি স্পিন সম্পন্ন করে একটি বিজ্ঞাপন দেখলেই এই টাকা আপনার ওয়ালেটে ক্লেইম করতে পারবেন।"
+                )
+            },
             icon = { Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color(0xFFFFC107)) }
         )
     }

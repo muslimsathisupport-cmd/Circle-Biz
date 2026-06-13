@@ -41,60 +41,16 @@ enum class NotificationType {
 fun NotificationScreen(onBack: () -> Unit) {
     var notifications by remember { mutableStateOf<List<AppNotification>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
+    var triggerUpdate by remember { mutableStateOf(0) }
 
     val context = androidx.compose.ui.platform.LocalContext.current
     val currentUserUid = UserSession.getUid(context)
 
-    DisposableEffect(currentUserUid) {
-        if (currentUserUid.isBlank()) {
-            isLoading = false
-            onDispose {}
-        } else {
-            val listenerReg = com.google.firebase.firestore.FirebaseFirestore.getInstance()
-                .collection("notifications")
-                .whereEqualTo("userId", currentUserUid)
-                .addSnapshotListener { snapshot, error ->
-                    if (snapshot != null) {
-                        notifications = snapshot.documents.mapNotNull { doc ->
-                            try {
-                                val id = doc.id
-                                val title = doc.getString("title") ?: ""
-                                val message = doc.getString("message") ?: ""
-                                val isRead = doc.getBoolean("isRead") ?: false
-                                val typeStr = doc.getString("type") ?: "INFO"
-                                val type = try {
-                                    NotificationType.valueOf(typeStr.uppercase())
-                                } catch (e: Exception) {
-                                    NotificationType.INFO
-                                }
-                                
-                                val ts = doc.getTimestamp("timestamp")
-                                val timeText = if (ts != null) {
-                                    val diff = System.currentTimeMillis() - ts.toDate().time
-                                    val mins = diff / (60 * 1000)
-                                    if (mins < 1) "Just now"
-                                    else if (mins < 60) "$mins mins ago"
-                                    else {
-                                        val hours = mins / 60
-                                        if (hours < 24) "$hours hours ago"
-                                        else "${hours / 24} days ago"
-                                    }
-                                } else {
-                                    doc.getString("time") ?: "Just now"
-                                }
-
-                                AppNotification(id, title, message, timeText, type, isRead)
-                            } catch (e: Exception) {
-                                null
-                            }
-                        }.sortedWith(compareBy<AppNotification> { it.isRead }.thenByDescending { it.id })
-                    }
-                    isLoading = false
-                }
-            onDispose {
-                listenerReg.remove()
-            }
+    LaunchedEffect(currentUserUid, triggerUpdate) {
+        if (currentUserUid.isNotBlank()) {
+            notifications = com.example.LocalNotificationManager.getNotifications(context, currentUserUid)
         }
+        isLoading = false
     }
 
     Dialog(
@@ -117,11 +73,9 @@ fun NotificationScreen(onBack: () -> Unit) {
                         },
                         actions = {
                             TextButton(onClick = {
-                                notifications.filter { !it.isRead }.forEach { unread ->
-                                    com.google.firebase.firestore.FirebaseFirestore.getInstance()
-                                        .collection("notifications")
-                                        .document(unread.id)
-                                        .update("isRead", true)
+                                if (currentUserUid.isNotBlank()) {
+                                    com.example.LocalNotificationManager.markAllAsRead(context, currentUserUid)
+                                    triggerUpdate++
                                 }
                             }) {
                                 Text("Mark all read")
@@ -157,10 +111,10 @@ fun NotificationScreen(onBack: () -> Unit) {
                             NotificationItem(
                                 notification = notification,
                                 onClick = {
-                                    com.google.firebase.firestore.FirebaseFirestore.getInstance()
-                                        .collection("notifications")
-                                        .document(notification.id)
-                                        .update("isRead", true)
+                                    if (currentUserUid.isNotBlank()) {
+                                        com.example.LocalNotificationManager.markAsRead(context, currentUserUid, notification.id)
+                                        triggerUpdate++
+                                    }
                                 }
                             )
                         }

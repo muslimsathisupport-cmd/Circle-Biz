@@ -14,7 +14,12 @@ object NotificationHelper {
     private const val CHANNEL_NAME = "Daily Check-In Rewards"
     private const val CHANNEL_DESC = "Notifications for Daily Check-In Ad Rewards"
 
-    fun showNotification(context: Context, title: String, message: String) {
+    fun showNotification(
+        context: Context,
+        title: String,
+        message: String,
+        type: com.example.ui.screens.NotificationType = com.example.ui.screens.NotificationType.INFO
+    ) {
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -33,11 +38,15 @@ object NotificationHelper {
         }
 
         val intent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra("action", "open_notifications")
+            putExtra("notif_title", title)
+            putExtra("notif_message", message)
+            putExtra("notif_type", type.name)
         }
         val pendingIntent = PendingIntent.getActivity(
             context,
-            0,
+            System.currentTimeMillis().toInt(),
             intent,
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT else PendingIntent.FLAG_UPDATE_CURRENT
         )
@@ -55,6 +64,16 @@ object NotificationHelper {
 
         try {
             notificationManager.notify(System.currentTimeMillis().toInt(), notificationBuilder.build())
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        // Save to local storage automatically so it persists offline and privately!
+        try {
+            val uid = com.example.ui.screens.UserSession.getUid(context)
+            if (uid.isNotBlank()) {
+                com.example.LocalNotificationManager.addNotification(context, uid, title, message, type)
+            }
         } catch (e: Exception) {
             e.printStackTrace()
         }

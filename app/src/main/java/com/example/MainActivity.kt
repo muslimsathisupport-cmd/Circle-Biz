@@ -17,6 +17,7 @@ import com.google.android.gms.ads.MobileAds
 class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
+    handleNotificationIntent(intent)
     MobileAds.initialize(this) {}
     enableEdgeToEdge(
         statusBarStyle = androidx.activity.SystemBarStyle.light(
@@ -56,6 +57,19 @@ class MainActivity : ComponentActivity() {
           AuthScreen(onLoginSuccess = { isLoggedIn = true })
         }
       }
+    }
+  }
+
+  override fun onNewIntent(intent: android.content.Intent) {
+    super.onNewIntent(intent)
+    setIntent(intent)
+    handleNotificationIntent(intent)
+  }
+
+  private fun handleNotificationIntent(intent: android.content.Intent?) {
+    if (intent == null) return
+    if (intent.getStringExtra("action") == "open_notifications") {
+        com.example.NotificationNavigationState.shouldOpenNotificationsPage = true
     }
   }
 }
