@@ -7,6 +7,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import com.example.AdMobManager
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -50,6 +51,9 @@ fun WatchTimeScreen(onBack: () -> Unit) {
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
     ) {
         com.example.ui.screens.FullScreenDialogModifier()
+        LaunchedEffect(Unit) {
+            AdMobManager.loadInterstitialAd(context)
+        }
         Surface(
             modifier = Modifier.fillMaxSize(),
             color = Color.White
@@ -95,9 +99,19 @@ fun WatchTimeScreen(onBack: () -> Unit) {
                             onClick = {
                                 val count = tabCountInput.toIntOrNull() ?: 0
                                 if (videoUrl.isNotBlank() && count > 0) {
-                                    activeVideoId = extractYouTubeVideoId(videoUrl)
-                                    if (activeVideoId != null) {
-                                        activeTabs = count
+                                    val videoId = extractYouTubeVideoId(videoUrl)
+                                    if (videoId != null) {
+                                        val activity = context as? android.app.Activity
+                                        if (activity != null) {
+                                            android.widget.Toast.makeText(context, "লোড হচ্ছে...", android.widget.Toast.LENGTH_SHORT).show()
+                                            AdMobManager.showInterstitialAd(activity) {
+                                                activeVideoId = videoId
+                                                activeTabs = count
+                                            }
+                                        } else {
+                                            activeVideoId = videoId
+                                            activeTabs = count
+                                        }
                                     } else {
                                         android.widget.Toast.makeText(context, "Invalid YouTube URL", android.widget.Toast.LENGTH_SHORT).show()
                                     }
@@ -136,6 +150,7 @@ fun WatchTimeScreen(onBack: () -> Unit) {
                                         isRefreshing = false
                                         videoUrl = ""
                                         tabCountInput = ""
+                                        activeVideoId = null
                                     }
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF44336))
@@ -217,6 +232,8 @@ fun YouTubeWebView(videoId: String, tabIndex: Int, playTrigger: Int) {
                 settings.javaScriptEnabled = true
                 settings.mediaPlaybackRequiresUserGesture = false
                 settings.domStorageEnabled = true
+                settings.useWideViewPort = true
+                settings.loadWithOverviewMode = true
                 webChromeClient = WebChromeClient()
                 webViewClient = object : WebViewClient() {
                     override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
@@ -224,11 +241,12 @@ fun YouTubeWebView(videoId: String, tabIndex: Int, playTrigger: Int) {
                     }
                 }
                 val htmlData = """
+                    <!DOCTYPE html>
                     <html>
-                    <body style="margin:0;padding:0;background-color:black;">
+                    <body style="margin:0;padding:0;background-color:black;overflow:hidden;">
                         <iframe id="ytplayer" type="text/html" width="100%" height="100%"
-                            src="https://www.youtube.com/embed/$videoId?enablejsapi=1&autoplay=0&muted=1&controls=1&rel=0&playsinline=1"
-                            frameborder="0" allowfullscreen></iframe>
+                            src="https://www.youtube.com/embed/$videoId?enablejsapi=1&autoplay=1&mute=1&controls=1&rel=0&playsinline=1&modestbranding=1"
+                            frameborder="0" allowfullscreen style="position:fixed;width:100%;height:100%;"></iframe>
                         <script>
                           var tag = document.createElement('script');
                           tag.src = "https://www.youtube.com/iframe_api";
@@ -238,13 +256,18 @@ fun YouTubeWebView(videoId: String, tabIndex: Int, playTrigger: Int) {
                           function onYouTubeIframeAPIReady() {
                             player = new YT.Player('ytplayer', {
                               events: {
+                                'onReady': onPlayerReady,
                                 'onStateChange': onPlayerStateChange
                               }
                             });
                           }
+                          function onPlayerReady(event) {
+                             event.target.mute();
+                             event.target.playVideo();
+                          }
                           function onPlayerStateChange(event) {
-                             if(event.data == 0) {
-                                document.body.innerHTML = '<div style="color:white;display:flex;align-items:center;justify-content:center;height:100%;font-size:14px;font-family:sans-serif;">Completed</div>';
+                             if(event.data == YT.PlayerState.ENDED) {
+                                document.body.innerHTML = '<div style="color:white;display:flex;align-items:center;justify-content:center;height:100vh;font-size:16px;font-family:sans-serif;">✅ Completed</div>';
                              }
                           }
                         </script>
