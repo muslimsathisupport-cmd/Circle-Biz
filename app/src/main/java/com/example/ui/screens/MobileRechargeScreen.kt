@@ -553,33 +553,48 @@ fun AmountEntryView(
                         val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
                         val currentUserUid = UserSession.getUid(context)
                         
-                        val rechargeData = hashMapOf(
-                            "userId" to currentUserUid,
-                            "amount" to amtValue,
-                            "phoneNumber" to phoneNumber,
-                            "operator" to operator.name,
-                            "status" to "pending",
-                            "createdAt" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
-                            "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp()
-                        )
-                        
-                        db.collection("recharge_requests")
-                            .add(rechargeData)
-                            .addOnCompleteListener { task ->
-                                isSubmitting = false
-                                if (task.isSuccessful) {
-                                    coroutineScope.launch {
-                                        onAmountChange("")
-                                        snackbarHostState.showSnackbar("Recharge request submitted successfully!")
-                                        kotlinx.coroutines.delay(1000)
-                                        onSuccess()
-                                    }
-                                } else {
-                                    coroutineScope.launch {
-                                        snackbarHostState.showSnackbar("Error: ${task.exception?.localizedMessage}")
+                        coroutineScope.launch {
+                            val result = com.example.RechargeApiHelper.performRecharge(
+                                phone = phoneNumber,
+                                amount = amtValue,
+                                operator = operator.name
+                            )
+                            
+                            val status = if (result.isSuccess) "success" else "failed"
+                            val rechargeData = hashMapOf(
+                                "userId" to currentUserUid,
+                                "amount" to amtValue,
+                                "phoneNumber" to phoneNumber,
+                                "operator" to operator.name,
+                                "status" to status,
+                                "transactionId" to (result.transactionId ?: ""),
+                                "apiMessage" to result.message,
+                                "createdAt" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
+                                "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+                            )
+                            
+                            db.collection("recharge_requests")
+                                .add(rechargeData)
+                                .addOnCompleteListener { task ->
+                                    isSubmitting = false
+                                    if (task.isSuccessful) {
+                                        coroutineScope.launch {
+                                            onAmountChange("")
+                                            if (result.isSuccess) {
+                                                snackbarHostState.showSnackbar("রিচার্জ সফল হয়েছে! ট্রানজেকশন আইডি: ${result.transactionId ?: ""}")
+                                            } else {
+                                                snackbarHostState.showSnackbar("রিচার্জ ব্যর্থ হয়েছে: ${result.message}")
+                                            }
+                                            kotlinx.coroutines.delay(1000)
+                                            onSuccess()
+                                        }
+                                    } else {
+                                        coroutineScope.launch {
+                                            snackbarHostState.showSnackbar("Error saving history: ${task.exception?.localizedMessage}")
+                                        }
                                     }
                                 }
-                            }
+                        }
                     }
                 },
                 modifier = Modifier.fillMaxWidth().height(52.dp),
