@@ -113,6 +113,32 @@ fun MobileRechargeScreen(onBack: () -> Unit) {
         }
     }
 
+    var userBalance by remember { mutableStateOf(0.0) }
+    var userRechargeBalance by remember { mutableStateOf(0.0) }
+    
+    val currentUserUid = UserSession.getUid(context)
+    DisposableEffect(currentUserUid) {
+        if (currentUserUid.isBlank()) return@DisposableEffect onDispose {}
+        val listener = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+            .collection("users")
+            .document(currentUserUid)
+            .addSnapshotListener { snapshot, _ ->
+                if (snapshot != null && snapshot.exists()) {
+                    userBalance = when (val bal = snapshot.get("balance")) {
+                        is Number -> bal.toDouble()
+                        is String -> bal.toDoubleOrNull() ?: 0.0
+                        else -> 0.0
+                    }
+                    userRechargeBalance = when (val bal = snapshot.get("rechargeBalance")) {
+                        is Number -> bal.toDouble()
+                        is String -> bal.toDoubleOrNull() ?: 0.0
+                        else -> 0.0
+                    }
+                }
+            }
+        onDispose { listener.remove() }
+    }
+
     var step by remember { mutableStateOf("CONTACTS") } // "CONTACTS", "AMOUNT"
     
     var searchQuery by remember { mutableStateOf("") }
@@ -196,6 +222,8 @@ fun MobileRechargeScreen(onBack: () -> Unit) {
                         contactName = selectedContactName,
                         operator = selectedProvider,
                         amount = amount,
+                        userBalance = userBalance,
+                        userRechargeBalance = userRechargeBalance,
                         onAmountChange = { amount = it },
                         quickAmounts = quickAmounts,
                         onChangeOperatorClick = { showOperatorSheet = true },
@@ -450,6 +478,8 @@ fun AmountEntryView(
     contactName: String,
     operator: MobileOperator?,
     amount: String,
+    userBalance: Double,
+    userRechargeBalance: Double,
     onAmountChange: (String) -> Unit,
     quickAmounts: List<String>,
     onChangeOperatorClick: () -> Unit,
@@ -504,6 +534,8 @@ fun AmountEntryView(
             
             Spacer(modifier = Modifier.height(24.dp))
             
+            Text("Available Recharge Balance: ৳${String.format("%.2f", userRechargeBalance)}", style = MaterialTheme.typography.bodyMedium, color = Color.Gray, modifier = Modifier.padding(bottom = 8.dp))
+            
             OutlinedTextField(
                 value = amount,
                 onValueChange = onAmountChange,
@@ -549,6 +581,12 @@ fun AmountEntryView(
                 onClick = {
                     val amtValue = amount.toDoubleOrNull() ?: 0.0
                     if (amtValue > 0 && operator != null) {
+                        if (amtValue > userRechargeBalance) {
+                            coroutineScope.launch {
+                                snackbarHostState.showSnackbar("Insufficient Recharge Balance!")
+                            }
+                            return@Button
+                        }
                         isSubmitting = true
                         val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
                         val currentUserUid = UserSession.getUid(context)
@@ -578,6 +616,22 @@ fun AmountEntryView(
                                 .addOnCompleteListener { task ->
                                     isSubmitting = false
                                     if (task.isSuccessful) {
+                                        if (result.isSuccess) {
+                                            val commission = amtValue * 0.01
+                                            val newRechargeBal = userRechargeBalance - amtValue
+                                            val newEarningBal = userBalance + commission
+                                            
+                                            // Atomically update user balance document or just update it
+                                            db.collection("users").document(currentUserUid)
+                                                .update(
+                                                    mapOf(
+                                                        "rechargeBalance" to newRechargeBal,
+                                                        "balance" to newEarningBal,
+                                                        "earnings" to com.google.firebase.firestore.FieldValue.increment(commission)
+                                                    )
+                                                )
+                                        }
+
                                         coroutineScope.launch {
                                             onAmountChange("")
                                             if (result.isSuccess) {

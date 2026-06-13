@@ -57,6 +57,7 @@ fun WalletScreen() {
     var earnings by remember { mutableStateOf(0.0) }
     var withdrawn by remember { mutableStateOf(0.0) }
     var deposited by remember { mutableStateOf(0.0) }
+    var rechargeBalance by remember { mutableStateOf(0.0) }
     var isLoadingUser by remember { mutableStateOf(true) }
 
     var transactions by remember { mutableStateOf<List<Transaction>>(emptyList()) }
@@ -91,6 +92,11 @@ fun WalletScreen() {
                             else -> 0.0
                         }
                         deposited = when (val value = snapshot.get("deposited")) {
+                            is Number -> value.toDouble()
+                            is String -> value.toDoubleOrNull() ?: 0.0
+                            else -> 0.0
+                        }
+                        rechargeBalance = when (val value = snapshot.get("rechargeBalance")) {
                             is Number -> value.toDouble()
                             is String -> value.toDoubleOrNull() ?: 0.0
                             else -> 0.0
@@ -272,7 +278,7 @@ fun WalletScreen() {
                         CircularProgressIndicator()
                     }
                 } else {
-                    WalletCard(balance = balance, earnings = earnings, withdrawn = withdrawn, deposited = deposited)
+                    WalletCard(balance = balance, earnings = earnings, withdrawn = withdrawn, deposited = deposited, rechargeBalance = rechargeBalance)
                 }
                 Spacer(modifier = Modifier.height(24.dp))
             }
@@ -345,7 +351,7 @@ fun WalletScreen() {
 }
 
 @Composable
-fun WalletCard(balance: Double, earnings: Double, withdrawn: Double, deposited: Double) {
+fun WalletCard(balance: Double, earnings: Double, withdrawn: Double, deposited: Double, rechargeBalance: Double = 0.0) {
     val gradientBrush = Brush.linearGradient(
         colors = listOf(Color(0xFF000000), Color(0xFF1E1E1E))
     )
@@ -397,8 +403,9 @@ fun WalletCard(balance: Double, earnings: Double, withdrawn: Double, deposited: 
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
+                    WalletStatItem("Recharge Balance", "৳${String.format("%.2f", rechargeBalance)}")
                     WalletStatItem("Earning Balance", "৳${String.format("%.2f", balance)}")
-                    WalletStatItem("Withdrawal Balance", "৳${String.format("%.2f", withdrawn)}")
+                    WalletStatItem("Withdrawal", "৳${String.format("%.2f", withdrawn)}")
                 }
             }
         }
@@ -572,6 +579,8 @@ fun DepositDialog(onDismiss: () -> Unit, onSubmitted: (Double, String) -> Unit) 
     var transactionId by remember { mutableStateOf("") }
     var selectedMethod by remember { mutableStateOf("bKash") }
     val methods = listOf("bKash", "Nagad", "Rocket", "Bank Transfer")
+    var selectedDepositTarget by remember { mutableStateOf("Recharge") }
+    val depositTargets = listOf("Recharge" to "For Mobile Recharge", "General" to "For General Jobs/Tasks")
     
     val depositSuggestions = listOf("100", "200", "500", "1000", "2000", "5000")
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -589,6 +598,29 @@ fun DepositDialog(onDismiss: () -> Unit, onSubmitted: (Double, String) -> Unit) 
                     }
                 )
                 Spacer(modifier = Modifier.height(16.dp))
+
+                Text("Deposit Purpose", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(bottom = 8.dp))
+                Column(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
+                    depositTargets.forEach { (targetId, description) ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { if (!isSubmitting) selectedDepositTarget = targetId }
+                                .padding(vertical = 4.dp)
+                        ) {
+                            RadioButton(
+                                selected = selectedDepositTarget == targetId,
+                                onClick = { if (!isSubmitting) selectedDepositTarget = targetId }
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text(targetId, fontWeight = FontWeight.Bold)
+                                Text(description, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                            }
+                        }
+                    }
+                }
                 
                 // bKash & Nagad copyable numbers section
                 val numberToShow = when (selectedMethod) {
@@ -723,6 +755,7 @@ fun DepositDialog(onDismiss: () -> Unit, onSubmitted: (Double, String) -> Unit) 
                                     "amount" to reqAmount,
                                     "method" to selectedMethod,
                                     "paymentMethod" to selectedMethod,
+                                    "depositTarget" to selectedDepositTarget,
                                     "transactionId" to transactionId,
                                     "status" to "pending",
                                     "timestamp" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
